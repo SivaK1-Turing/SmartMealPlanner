@@ -11,6 +11,7 @@ from mealplanner.health import (
     check_required_directories,
     check_environment_variables,
     check_file_permissions,
+    check_database_connectivity,
     run_health_check,
     create_missing_directories,
     HealthCheckError
@@ -60,11 +61,11 @@ class TestDirectoryChecks:
 
 class TestEnvironmentVariableChecks:
     """Test environment variable checking functionality."""
-    
+
     def test_check_environment_variables_empty_requirements(self):
-        """Test environment variable check with no requirements (Feature 1)."""
+        """Test environment variable check with no requirements (Feature 2)."""
         missing = check_environment_variables()
-        assert missing == []  # No required vars in Feature 1
+        assert missing == []  # No required vars in Feature 2, DATABASE_URL is optional
 
 
 class TestFilePermissionChecks:
@@ -230,3 +231,77 @@ class TestHealthCheckEdgeCases:
             assert any("Directory check failed" in issue for issue in issues)
             assert any("Environment variable check failed" in issue for issue in issues)
             assert any("Permission check failed" in issue for issue in issues)
+
+
+class TestDatabaseConnectivityChecks:
+    """Test database connectivity checking functionality."""
+
+    def test_check_database_connectivity_success(self):
+        """Test successful database connectivity check."""
+        with patch('mealplanner.database.get_database_url') as mock_get_url, \
+             patch('mealplanner.database.check_database_connection') as mock_check_conn:
+
+            mock_get_url.return_value = "sqlite:///test.db"
+            mock_check_conn.return_value = True
+
+            issues = check_database_connectivity()
+            assert issues == []
+
+    def test_check_database_connectivity_failure(self):
+        """Test failed database connectivity check."""
+        with patch('mealplanner.database.get_database_url') as mock_get_url, \
+             patch('mealplanner.database.check_database_connection') as mock_check_conn:
+
+            mock_get_url.return_value = "sqlite:///test.db"
+            mock_check_conn.return_value = False
+
+            issues = check_database_connectivity()
+            assert len(issues) == 1
+            assert "Cannot connect to database" in issues[0]
+
+    def test_check_database_connectivity_url_error(self):
+        """Test database connectivity check with URL configuration error."""
+        with patch('mealplanner.database.get_database_url') as mock_get_url:
+            mock_get_url.side_effect = Exception("URL configuration error")
+
+            issues = check_database_connectivity()
+            assert len(issues) == 1
+            assert "Database URL configuration error" in issues[0]
+
+    def test_check_database_connectivity_import_error(self):
+        """Test database connectivity check with import error."""
+        with patch('mealplanner.database.get_database_url') as mock_get_url:
+            mock_get_url.side_effect = ImportError("Module not found")
+
+            issues = check_database_connectivity()
+            assert len(issues) == 1
+            assert "Database URL configuration error" in issues[0]
+
+    def test_run_health_check_with_database(self, temp_workspace):
+        """Test health check including database connectivity."""
+        # Create required directories
+        (temp_workspace / "plugins").mkdir()
+        (temp_workspace / "src" / "mealplanner").mkdir(parents=True)
+        (temp_workspace / "tests").mkdir()
+
+        with patch('mealplanner.health.check_database_connectivity') as mock_db_check:
+            mock_db_check.return_value = []  # No database issues
+
+            success, issues = run_health_check()
+            assert success is True
+            assert issues == []
+            mock_db_check.assert_called_once()
+
+    def test_run_health_check_with_database_issues(self, temp_workspace):
+        """Test health check with database connectivity issues."""
+        # Create required directories
+        (temp_workspace / "plugins").mkdir()
+        (temp_workspace / "src" / "mealplanner").mkdir(parents=True)
+        (temp_workspace / "tests").mkdir()
+
+        with patch('mealplanner.health.check_database_connectivity') as mock_db_check:
+            mock_db_check.return_value = ["Database connection failed"]
+
+            success, issues = run_health_check()
+            assert success is False
+            assert "Database connection failed" in issues

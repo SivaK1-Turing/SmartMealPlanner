@@ -192,3 +192,90 @@ class TestConfigValidation:
 
         result = validate_config_file(str(config_file))
         assert result == str(config_file)
+
+
+class TestDatabaseCommands:
+    """Test database-related CLI commands."""
+
+    def test_init_db_command_success(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test successful database initialization."""
+        with patch('mealplanner.database.init_database') as mock_init_db, \
+             patch('mealplanner.database.get_database_info') as mock_db_info:
+
+            mock_db_info.return_value = {
+                'database_url': 'sqlite:///test.db',
+                'driver': 'sqlite'
+            }
+
+            result = runner.invoke(app, ["init-db"])
+            assert result.exit_code == 0
+            assert "Database initialization completed successfully" in result.stdout
+            assert "sqlite:///test.db" in result.stdout
+            mock_init_db.assert_called_once_with(database_url=None, force=False)
+
+    def test_init_db_command_with_force(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test database initialization with force flag."""
+        with patch('mealplanner.database.init_database') as mock_init_db, \
+             patch('mealplanner.database.get_database_info') as mock_db_info:
+
+            mock_db_info.return_value = {
+                'database_url': 'sqlite:///test.db',
+                'driver': 'sqlite'
+            }
+
+            result = runner.invoke(app, ["init-db", "--force"])
+            assert result.exit_code == 0
+            mock_init_db.assert_called_once_with(database_url=None, force=True)
+
+    def test_init_db_command_with_custom_url(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test database initialization with custom URL."""
+        with patch('mealplanner.database.init_database') as mock_init_db, \
+             patch('mealplanner.database.get_database_info') as mock_db_info:
+
+            mock_db_info.return_value = {
+                'database_url': 'sqlite:///custom.db',
+                'driver': 'sqlite'
+            }
+
+            result = runner.invoke(app, ["init-db", "--database-url", "sqlite:///custom.db"])
+            assert result.exit_code == 0
+            mock_init_db.assert_called_once_with(database_url="sqlite:///custom.db", force=False)
+
+    def test_init_db_command_failure(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test database initialization failure."""
+        with patch('mealplanner.database.init_database') as mock_init_db:
+            from sqlalchemy.exc import OperationalError
+            mock_init_db.side_effect = OperationalError("Database error", None, None)
+
+            result = runner.invoke(app, ["init-db"])
+            assert result.exit_code == 1
+            assert "Database initialization failed" in result.stderr
+
+    def test_db_info_command_success(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test successful database info command."""
+        with patch('mealplanner.database.get_database_info') as mock_db_info:
+            mock_db_info.return_value = {
+                'database_url': 'sqlite:///test.db',
+                'driver': 'sqlite',
+                'connected': True,
+                'database_file': 'test.db',
+                'file_exists': True,
+                'file_size': 1024
+            }
+
+            result = runner.invoke(app, ["db-info"])
+            assert result.exit_code == 0
+            assert "Database Information" in result.stdout
+            assert "sqlite:///test.db" in result.stdout
+            assert "Driver: sqlite" in result.stdout
+            assert "Connected: ✅ Yes" in result.stdout
+            assert "Database file: test.db" in result.stdout
+
+    def test_db_info_command_error(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test database info command with error."""
+        with patch('mealplanner.database.get_database_info') as mock_db_info:
+            mock_db_info.return_value = {'error': 'Database connection failed'}
+
+            result = runner.invoke(app, ["db-info"])
+            assert result.exit_code == 1
+            assert "Error getting database info" in result.stderr
