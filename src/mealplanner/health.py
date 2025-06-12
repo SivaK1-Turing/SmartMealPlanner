@@ -42,21 +42,63 @@ def check_required_directories() -> List[str]:
 def check_environment_variables() -> List[str]:
     """
     Check that required environment variables are set.
-    
+
     Returns:
         List of missing environment variables
     """
-    # For Feature 1, we don't have strict requirements yet
-    # This will be expanded in later features
-    required_vars = []
-    
+    # For Feature 2, we check database configuration
+    required_vars = []  # DATABASE_URL is optional, defaults to SQLite
+    recommended_vars = ["DATABASE_URL"]
+
     missing_vars = []
     for var in required_vars:
         if not os.getenv(var):
             missing_vars.append(var)
             logger.warning(f"Required environment variable missing: {var}")
-    
+
+    # Check recommended variables
+    for var in recommended_vars:
+        if not os.getenv(var):
+            logger.info(f"Recommended environment variable not set: {var} (will use default)")
+
     return missing_vars
+
+
+def check_database_connectivity() -> List[str]:
+    """
+    Check database connectivity and configuration.
+
+    Returns:
+        List of database issues
+    """
+    issues = []
+
+    try:
+        from .database import check_database_connection, get_database_url
+
+        # Check if we can get database URL
+        try:
+            db_url = get_database_url()
+            logger.debug(f"Database URL configured: {db_url}")
+        except Exception as e:
+            issues.append(f"Database URL configuration error: {e}")
+            return issues
+
+        # Check database connectivity
+        if not check_database_connection():
+            issues.append("Cannot connect to database")
+            logger.warning("Database connectivity check failed")
+        else:
+            logger.debug("Database connectivity check passed")
+
+    except ImportError as e:
+        issues.append(f"Database module import error: {e}")
+        logger.error(f"Database module import error: {e}")
+    except Exception as e:
+        issues.append(f"Database check error: {e}")
+        logger.error(f"Database check error: {e}")
+
+    return issues
 
 
 def check_file_permissions() -> List[str]:
@@ -116,6 +158,14 @@ def run_health_check() -> Tuple[bool, List[str]]:
     except Exception as e:
         all_issues.append(f"Permission check failed: {e}")
         logger.error(f"Permission check failed: {e}")
+
+    try:
+        # Check database connectivity
+        db_issues = check_database_connectivity()
+        all_issues.extend(db_issues)
+    except Exception as e:
+        all_issues.append(f"Database check failed: {e}")
+        logger.error(f"Database check failed: {e}")
 
     success = len(all_issues) == 0
 
