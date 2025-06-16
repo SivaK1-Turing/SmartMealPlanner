@@ -131,6 +131,100 @@ def hello():
         logger.info("Hello command executed successfully")
 
 
+@app.command()
+def init_db(
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Force initialization by dropping existing tables"
+    ),
+    database_url: Optional[str] = typer.Option(
+        None,
+        "--database-url",
+        help="Override database URL from configuration"
+    )
+):
+    """
+    Initialize or upgrade the database schema.
+
+    Creates all necessary tables and sets up the database for first use.
+    Use --force to drop existing tables and recreate them.
+    """
+    from .database import init_database, get_database_info, OperationalError
+
+    config = get_config()
+
+    try:
+        typer.echo("Initializing database...")
+        if config.debug:
+            logger.info(f"Database initialization started (force={force})")
+
+        # Initialize the database
+        init_database(database_url=database_url, force=force)
+
+        # Get database info for confirmation
+        db_info = get_database_info()
+
+        typer.echo("✅ Database initialization completed successfully!")
+        typer.echo(f"Database: {db_info.get('database_url', 'Unknown')}")
+        typer.echo(f"Driver: {db_info.get('driver', 'Unknown')}")
+
+        if config.debug:
+            logger.info("Database initialization completed successfully")
+
+    except OperationalError as e:
+        typer.echo(f"❌ Database initialization failed: {e}", err=True)
+        if config.debug:
+            logger.error(f"Database initialization failed: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Unexpected error during database initialization: {e}", err=True)
+        if config.debug:
+            logger.exception("Unexpected error during database initialization")
+        raise typer.Exit(1)
+
+
+@app.command()
+def db_info():
+    """
+    Show database connection and configuration information.
+    """
+    from .database import get_database_info, check_database_connection
+
+    config = get_config()
+
+    try:
+        typer.echo("Database Information:")
+        typer.echo("=" * 50)
+
+        db_info = get_database_info()
+
+        if 'error' in db_info:
+            typer.echo(f"❌ Error getting database info: {db_info['error']}", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Database URL: {db_info.get('database_url', 'Not configured')}")
+        typer.echo(f"Driver: {db_info.get('driver', 'Unknown')}")
+        typer.echo(f"Connected: {'✅ Yes' if db_info.get('connected') else '❌ No'}")
+
+        # SQLite-specific information
+        if 'database_file' in db_info:
+            typer.echo(f"Database file: {db_info['database_file']}")
+            typer.echo(f"File exists: {'✅ Yes' if db_info.get('file_exists') else '❌ No'}")
+            if db_info.get('file_size') is not None:
+                size_mb = db_info['file_size'] / (1024 * 1024)
+                typer.echo(f"File size: {size_mb:.2f} MB")
+
+        if config.debug:
+            logger.info("Database info command completed")
+
+    except Exception as e:
+        typer.echo(f"❌ Error retrieving database information: {e}", err=True)
+        if config.debug:
+            logger.exception("Error retrieving database information")
+        raise typer.Exit(1)
+
+
 def handle_unknown_command(command_name: str):
     """
     Handle unknown commands by suggesting valid subcommands.

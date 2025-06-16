@@ -7,7 +7,7 @@ A command-line Python application that helps users import, organize, and schedul
 The Smart Meal Planner is built with a modular design of eight incremental features:
 
 1. **Scaffolding & CLI Setup** ✅ (Implemented)
-2. **Database & ORM Integration** (Coming soon)
+2. **Database & ORM Integration** ✅ (Implemented)
 3. **Recipe Import & Management** (Coming soon)
 4. **Ingredient Search & Filtering** (Coming soon)
 5. **Meal Scheduling & Calendar** (Coming soon)
@@ -117,9 +117,9 @@ pytest tests/test_plugin_loader.py
 
 ## Feature 1: Scaffolding & CLI Setup
 
-### Testing Feature 1
+### Testing Features 1 & 2
 
-Test the CLI functionality:
+Test the CLI and database functionality:
 
 ```bash
 # Basic functionality
@@ -127,10 +127,15 @@ mealplanner --help
 mealplanner --version
 mealplanner hello
 
+# Database commands (Feature 2)
+mealplanner init-db
+mealplanner db-info
+mealplanner init-db --force  # Recreate database
+
 # Debug mode
 mealplanner --debug hello
 
-# Health checks (will create missing directories)
+# Health checks (will create missing directories and check database)
 mealplanner hello
 
 # Plugin system (create a test plugin first)
@@ -138,8 +143,8 @@ echo 'def cmd_test(): return "Plugin works!"' > plugins/test_plugin.py
 mealplanner hello  # Plugins are loaded automatically
 
 # Test configuration files
-echo "TEST_VAR=test_value" > test.env
-mealplanner --config test.env hello
+echo "DATABASE_URL=sqlite:///custom.db" > test.env
+mealplanner --config test.env db-info
 
 # Test error handling
 mealplanner --config nonexistent.env hello  # Should show error
@@ -148,16 +153,18 @@ mealplanner --config nonexistent.env hello  # Should show error
 Run the test suite:
 
 ```bash
-# Run all Feature 1 tests (74 tests total)
+# Run all tests (128 tests total)
 pytest tests/ -v
 
-# Run with coverage (93.16% coverage achieved)
+# Run with coverage (91.78% coverage achieved)
 pytest tests/ --cov=src/mealplanner --cov-report=term-missing
 
 # Test specific components
-pytest tests/test_cli.py -v          # 14 tests - CLI functionality
+pytest tests/test_cli.py -v          # 20 tests - CLI functionality
 pytest tests/test_config.py -v       # 22 tests - Configuration management
-pytest tests/test_health.py -v       # 17 tests - Health checks
+pytest tests/test_database.py -v     # 24 tests - Database functionality
+pytest tests/test_health.py -v       # 23 tests - Health checks
+pytest tests/test_models.py -v       # 18 tests - ORM models
 pytest tests/test_plugin_loader.py -v # 21 tests - Plugin system
 
 # Run tests with detailed output
