@@ -1,0 +1,6 @@
+title,description,prep_time,cook_time,servings,cuisine,dietary_tags,calories,protein,carbs,fat
+"Beef Tacos","Delicious beef tacos with fresh toppings",15,20,4,"Mexican","quick,comfort_food",380,22,28,18
+"Caesar Salad","Classic Caesar salad with croutons",10,,2,"Italian","vegetarian",250,8,15,20
+"Pancakes","Fluffy breakfast pancakes",10,15,4,"American","breakfast,vegetarian",320,8,45,12
+"Thai Curry","Spicy coconut curry with vegetables",20,25,4,"Thai","spicy,vegetarian",280,6,35,15
+"Fish and Chips","British classic with crispy fish",15,25,2,"British","comfort_food",520,28,45,25

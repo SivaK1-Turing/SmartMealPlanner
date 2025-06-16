@@ -279,3 +279,62 @@ class TestDatabaseCommands:
             result = runner.invoke(app, ["db-info"])
             assert result.exit_code == 1
             assert "Error getting database info" in result.stderr
+
+
+class TestRecipeCommands:
+    """Test recipe import and management commands."""
+
+    def test_import_recipes_command_success(self, runner, mock_config, mock_health_check, mock_plugins, tmp_path):
+        """Test successful recipe import from JSON."""
+        # Create a test JSON file
+        json_file = tmp_path / "test_recipes.json"
+        json_file.write_text('[{"title": "Test Recipe", "description": "A test recipe"}]')
+
+        with patch('mealplanner.recipe_import.RecipeImporter') as mock_importer_class:
+            mock_importer = MagicMock()
+            mock_importer.import_from_json.return_value = (1, 0, [])
+            mock_importer_class.return_value = mock_importer
+
+            result = runner.invoke(app, ["import-recipes", str(json_file)])
+
+            assert result.exit_code == 0
+            assert "Import completed!" in result.stdout
+            assert "Imported: 1 recipes" in result.stdout
+
+    def test_import_recipes_command_file_not_found(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test recipe import with non-existent file."""
+        with patch('mealplanner.recipe_import.RecipeImporter') as mock_importer_class:
+            from mealplanner.recipe_import import RecipeImportError
+            mock_importer = MagicMock()
+            mock_importer.import_from_json.side_effect = RecipeImportError("File not found")
+            mock_importer_class.return_value = mock_importer
+
+            result = runner.invoke(app, ["import-recipes", "nonexistent.json"])
+
+            assert result.exit_code == 1
+            assert "Import failed" in result.stderr
+
+    def test_list_recipes_command_success(self, runner, mock_config, mock_health_check, mock_plugins):
+        """Test successful recipe listing."""
+        from mealplanner.models import Recipe
+
+        mock_recipes = [
+            Recipe(id=1, title="Test Recipe 1", cuisine="Italian"),
+            Recipe(id=2, title="Test Recipe 2", cuisine="Mexican")
+        ]
+
+        with patch('mealplanner.recipe_management.RecipeManager') as mock_manager:
+            mock_manager.list_recipes.return_value = (mock_recipes, 2, 1)
+
+            with patch('mealplanner.recipe_management.RecipeFormatter') as mock_formatter:
+                mock_formatter.format_recipe_summary.side_effect = [
+                    "[1] Test Recipe 1 - Italian",
+                    "[2] Test Recipe 2 - Mexican"
+                ]
+
+                result = runner.invoke(app, ["list-recipes"])
+
+                assert result.exit_code == 0
+                assert "Recipes (Page 1 of 1, 2 total)" in result.stdout
+                assert "Test Recipe 1" in result.stdout
+                assert "Test Recipe 2" in result.stdout
