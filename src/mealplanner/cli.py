@@ -593,6 +593,429 @@ def delete_recipe(
         raise typer.Exit(1)
 
 
+@app.command()
+def search_ingredients(
+    search_term: Optional[str] = typer.Option(None, "--search", help="Search term for ingredient names"),
+    category: Optional[str] = typer.Option(None, "--category", help="Filter by category"),
+    min_calories: Optional[float] = typer.Option(None, "--min-calories", help="Minimum calories per 100g"),
+    max_calories: Optional[float] = typer.Option(None, "--max-calories", help="Maximum calories per 100g"),
+    min_protein: Optional[float] = typer.Option(None, "--min-protein", help="Minimum protein per 100g"),
+    max_protein: Optional[float] = typer.Option(None, "--max-protein", help="Maximum protein per 100g"),
+    min_carbs: Optional[float] = typer.Option(None, "--min-carbs", help="Minimum carbs per 100g"),
+    max_carbs: Optional[float] = typer.Option(None, "--max-carbs", help="Maximum carbs per 100g"),
+    min_fat: Optional[float] = typer.Option(None, "--min-fat", help="Minimum fat per 100g"),
+    max_fat: Optional[float] = typer.Option(None, "--max-fat", help="Maximum fat per 100g"),
+    min_fiber: Optional[float] = typer.Option(None, "--min-fiber", help="Minimum fiber per 100g"),
+    max_fiber: Optional[float] = typer.Option(None, "--max-fiber", help="Maximum fiber per 100g"),
+    sort_by: str = typer.Option("name", "--sort-by", help="Sort by field (name, category, calories_per_100g, protein_per_100g)"),
+    sort_order: str = typer.Option("asc", "--sort-order", help="Sort order (asc, desc)"),
+    page: int = typer.Option(1, "--page", help="Page number"),
+    per_page: int = typer.Option(20, "--per-page", help="Ingredients per page"),
+    detailed: bool = typer.Option(False, "--detailed", help="Show detailed ingredient information")
+):
+    """
+    Search ingredients with advanced filtering options.
+
+    Filter ingredients by nutritional content, category, and other criteria.
+    Supports pagination and sorting for large result sets.
+    """
+    from .ingredient_search import IngredientSearchCriteria, IngredientSearcher
+    from .ingredient_management import IngredientFormatter
+
+    config = get_config()
+
+    try:
+        # Create search criteria
+        criteria = IngredientSearchCriteria(
+            search_term=search_term,
+            category=category,
+            min_calories=min_calories,
+            max_calories=max_calories,
+            min_protein=min_protein,
+            max_protein=max_protein,
+            min_carbs=min_carbs,
+            max_carbs=max_carbs,
+            min_fat=min_fat,
+            max_fat=max_fat,
+            min_fiber=min_fiber,
+            max_fiber=max_fiber,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+        ingredients, total_count, total_pages = IngredientSearcher.search_ingredients(
+            criteria, page=page, per_page=per_page
+        )
+
+        if not ingredients:
+            typer.echo("No ingredients found matching the criteria.")
+            return
+
+        # Display header
+        typer.echo(f"Ingredients (Page {page} of {total_pages}, {total_count} total)")
+        typer.echo("=" * 70)
+
+        # Display ingredients
+        for ingredient in ingredients:
+            if detailed:
+                typer.echo(IngredientFormatter.format_ingredient_details(ingredient))
+                typer.echo("-" * 50)
+            else:
+                typer.echo(IngredientFormatter.format_ingredient_summary(ingredient))
+
+        # Display pagination info
+        if total_pages > 1:
+            typer.echo(f"\nPage {page} of {total_pages}")
+            if page < total_pages:
+                typer.echo(f"Use --page {page + 1} to see more ingredients")
+
+        if config.debug:
+            logger.info(f"Found {len(ingredients)} ingredients (page {page}/{total_pages})")
+
+    except Exception as e:
+        typer.echo(f"❌ Error searching ingredients: {e}", err=True)
+        if config.debug:
+            logger.exception("Error searching ingredients")
+        raise typer.Exit(1)
+
+
+@app.command()
+def list_ingredients(
+    page: int = typer.Option(1, "--page", help="Page number"),
+    per_page: int = typer.Option(20, "--per-page", help="Ingredients per page"),
+    category: Optional[str] = typer.Option(None, "--category", help="Filter by category"),
+    search: Optional[str] = typer.Option(None, "--search", help="Search in ingredient names"),
+    sort_by: str = typer.Option("name", "--sort-by", help="Sort by field (name, category, calories_per_100g, protein_per_100g)"),
+    sort_order: str = typer.Option("asc", "--sort-order", help="Sort order (asc, desc)"),
+    detailed: bool = typer.Option(False, "--detailed", help="Show detailed ingredient information")
+):
+    """
+    List ingredients with filtering, pagination, and sorting options.
+    """
+    from .ingredient_management import IngredientManager, IngredientFormatter
+
+    config = get_config()
+
+    try:
+        ingredients, total_count, total_pages = IngredientManager.list_ingredients(
+            page=page,
+            per_page=per_page,
+            category=category,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+        if not ingredients:
+            typer.echo("No ingredients found.")
+            return
+
+        # Display header
+        typer.echo(f"Ingredients (Page {page} of {total_pages}, {total_count} total)")
+        typer.echo("=" * 70)
+
+        # Display ingredients
+        for ingredient in ingredients:
+            if detailed:
+                typer.echo(IngredientFormatter.format_ingredient_details(ingredient))
+                typer.echo("-" * 50)
+            else:
+                typer.echo(IngredientFormatter.format_ingredient_summary(ingredient))
+
+        # Display pagination info
+        if total_pages > 1:
+            typer.echo(f"\nPage {page} of {total_pages}")
+            if page < total_pages:
+                typer.echo(f"Use --page {page + 1} to see more ingredients")
+
+        if config.debug:
+            logger.info(f"Listed {len(ingredients)} ingredients (page {page}/{total_pages})")
+
+    except Exception as e:
+        typer.echo(f"❌ Error listing ingredients: {e}", err=True)
+        if config.debug:
+            logger.exception("Error listing ingredients")
+        raise typer.Exit(1)
+
+
+@app.command()
+def add_ingredient(
+    name: str = typer.Argument(..., help="Ingredient name"),
+    category: Optional[str] = typer.Option(None, "--category", help="Ingredient category"),
+    calories: Optional[float] = typer.Option(None, "--calories", help="Calories per 100g"),
+    protein: Optional[float] = typer.Option(None, "--protein", help="Protein per 100g"),
+    carbs: Optional[float] = typer.Option(None, "--carbs", help="Carbohydrates per 100g"),
+    fat: Optional[float] = typer.Option(None, "--fat", help="Fat per 100g"),
+    fiber: Optional[float] = typer.Option(None, "--fiber", help="Fiber per 100g"),
+    sugar: Optional[float] = typer.Option(None, "--sugar", help="Sugar per 100g"),
+    sodium: Optional[float] = typer.Option(None, "--sodium", help="Sodium per 100g (mg)"),
+    unit: Optional[str] = typer.Option(None, "--unit", help="Common unit (e.g., cup, tbsp)"),
+    unit_weight: Optional[float] = typer.Option(None, "--unit-weight", help="Weight of one unit in grams")
+):
+    """
+    Add a new ingredient to the database.
+
+    Specify nutritional information per 100g and optional unit conversions.
+    """
+    from .ingredient_management import IngredientManager, IngredientFormatter
+
+    config = get_config()
+
+    try:
+        # Check if ingredient already exists
+        existing = IngredientManager.get_ingredient_by_name(name)
+        if existing:
+            typer.echo(f"❌ Ingredient '{name}' already exists with ID {existing.id}", err=True)
+            raise typer.Exit(1)
+
+        # Create the ingredient
+        ingredient = IngredientManager.create_ingredient(
+            name=name,
+            category=category,
+            calories_per_100g=calories,
+            protein_per_100g=protein,
+            carbs_per_100g=carbs,
+            fat_per_100g=fat,
+            fiber_per_100g=fiber,
+            sugar_per_100g=sugar,
+            sodium_per_100g=sodium,
+            common_unit=unit,
+            unit_weight_grams=unit_weight
+        )
+
+        typer.echo("✅ Ingredient added successfully!")
+        typer.echo(IngredientFormatter.format_ingredient_details(ingredient))
+
+        if config.debug:
+            logger.info(f"Added ingredient: {ingredient.name} (ID: {ingredient.id})")
+
+    except Exception as e:
+        typer.echo(f"❌ Error adding ingredient: {e}", err=True)
+        if config.debug:
+            logger.exception("Error adding ingredient")
+        raise typer.Exit(1)
+
+
+@app.command()
+def update_ingredient(
+    ingredient_id: int = typer.Argument(..., help="Ingredient ID to update")
+):
+    """
+    Interactively update an ingredient's fields.
+
+    This command will prompt you to update various fields of the ingredient.
+    Press Enter to keep the current value, or type a new value to change it.
+    """
+    from .ingredient_management import IngredientManager, IngredientFormatter
+
+    config = get_config()
+
+    try:
+        # Get the ingredient
+        ingredient = IngredientManager.get_ingredient_by_id(ingredient_id)
+        if not ingredient:
+            typer.echo(f"❌ Ingredient with ID {ingredient_id} not found.", err=True)
+            raise typer.Exit(1)
+
+        typer.echo("Current ingredient:")
+        typer.echo(IngredientFormatter.format_ingredient_details(ingredient))
+        typer.echo("\nUpdate ingredient (press Enter to keep current value):")
+
+        updates = {}
+
+        # Name
+        new_name = typer.prompt(f"Name", default=ingredient.name)
+        if new_name != ingredient.name:
+            updates['name'] = new_name
+
+        # Category
+        current_category = ingredient.category or ""
+        new_category = typer.prompt(f"Category", default=current_category)
+        if new_category != current_category:
+            updates['category'] = new_category if new_category else None
+
+        # Nutritional fields
+        nutrition_fields = [
+            ('calories_per_100g', 'Calories per 100g'),
+            ('protein_per_100g', 'Protein per 100g'),
+            ('carbs_per_100g', 'Carbs per 100g'),
+            ('fat_per_100g', 'Fat per 100g'),
+            ('fiber_per_100g', 'Fiber per 100g'),
+            ('sugar_per_100g', 'Sugar per 100g'),
+            ('sodium_per_100g', 'Sodium per 100g (mg)')
+        ]
+
+        for field, prompt_text in nutrition_fields:
+            current_value = str(getattr(ingredient, field)) if getattr(ingredient, field) else ""
+            new_value = typer.prompt(prompt_text, default=current_value)
+            if new_value != current_value:
+                try:
+                    updates[field] = float(new_value) if new_value else None
+                except ValueError:
+                    typer.echo(f"Invalid value for {prompt_text}, keeping current value")
+
+        # Common unit
+        current_unit = ingredient.common_unit or ""
+        new_unit = typer.prompt(f"Common unit", default=current_unit)
+        if new_unit != current_unit:
+            updates['common_unit'] = new_unit if new_unit else None
+
+        # Unit weight
+        current_weight = str(ingredient.unit_weight_grams) if ingredient.unit_weight_grams else ""
+        new_weight = typer.prompt(f"Unit weight (grams)", default=current_weight)
+        if new_weight != current_weight:
+            try:
+                updates['unit_weight_grams'] = float(new_weight) if new_weight else None
+            except ValueError:
+                typer.echo("Invalid unit weight, keeping current value")
+
+        if not updates:
+            typer.echo("No changes made.")
+            return
+
+        # Apply updates
+        updated_ingredient = IngredientManager.update_ingredient(ingredient_id, updates)
+        if updated_ingredient:
+            typer.echo("✅ Ingredient updated successfully!")
+            typer.echo(IngredientFormatter.format_ingredient_details(updated_ingredient))
+        else:
+            typer.echo("❌ Failed to update ingredient.", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Updated ingredient {ingredient_id}: {list(updates.keys())}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error updating ingredient: {e}", err=True)
+        if config.debug:
+            logger.exception("Error updating ingredient")
+        raise typer.Exit(1)
+
+
+@app.command()
+def delete_ingredient(
+    ingredient_id: int = typer.Argument(..., help="Ingredient ID to delete"),
+    force: bool = typer.Option(False, "--force", help="Skip confirmation prompt")
+):
+    """
+    Delete an ingredient and its recipe associations.
+
+    This will permanently delete the ingredient and remove it from any recipes.
+    Use --force to skip the confirmation prompt.
+    """
+    from .ingredient_management import IngredientManager, IngredientFormatter
+
+    config = get_config()
+
+    try:
+        # Get the ingredient
+        ingredient = IngredientManager.get_ingredient_by_id(ingredient_id)
+        if not ingredient:
+            typer.echo(f"❌ Ingredient with ID {ingredient_id} not found.", err=True)
+            raise typer.Exit(1)
+
+        # Show ingredient details
+        typer.echo("Ingredient to delete:")
+        typer.echo(IngredientFormatter.format_ingredient_details(ingredient))
+
+        # Confirmation
+        if not force:
+            confirm = typer.confirm(
+                f"\nAre you sure you want to delete '{ingredient.name}'? "
+                "This will also remove it from any recipes."
+            )
+            if not confirm:
+                typer.echo("Deletion cancelled.")
+                return
+
+        # Delete the ingredient
+        success = IngredientManager.delete_ingredient(ingredient_id)
+        if success:
+            typer.echo(f"✅ Ingredient '{ingredient.name}' deleted successfully!")
+        else:
+            typer.echo("❌ Failed to delete ingredient.", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Deleted ingredient {ingredient_id}: {ingredient.name}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error deleting ingredient: {e}", err=True)
+        if config.debug:
+            logger.exception("Error deleting ingredient")
+        raise typer.Exit(1)
+
+
+@app.command()
+def ingredient_stats():
+    """
+    Show ingredient database statistics and analytics.
+
+    Displays information about ingredient categories, nutritional averages,
+    and most frequently used ingredients.
+    """
+    from .ingredient_management import IngredientManager
+    from .ingredient_search import IngredientSearcher
+
+    config = get_config()
+
+    try:
+        stats = IngredientManager.get_ingredient_statistics()
+
+        typer.echo("📊 Ingredient Database Statistics")
+        typer.echo("=" * 50)
+
+        # Basic counts
+        typer.echo(f"Total ingredients: {stats['total_ingredients']}")
+
+        # Categories
+        if stats['categories']:
+            typer.echo(f"\nIngredients by category:")
+            for category, count in sorted(stats['categories'].items()):
+                typer.echo(f"  {category}: {count}")
+
+        # Nutritional averages
+        typer.echo(f"\nNutritional averages (per 100g):")
+        if stats['avg_calories_per_100g']:
+            typer.echo(f"  Average calories: {stats['avg_calories_per_100g']}")
+        if stats['avg_protein_per_100g']:
+            typer.echo(f"  Average protein: {stats['avg_protein_per_100g']}g")
+
+        # Most used ingredients
+        if stats['most_used']:
+            typer.echo(f"\nMost used ingredients in recipes:")
+            for name, count in stats['most_used']:
+                typer.echo(f"  {name}: used in {count} recipe(s)")
+
+        # Quick nutrition searches
+        typer.echo(f"\nQuick nutrition insights:")
+
+        # High protein ingredients
+        high_protein = IngredientSearcher.find_high_protein_ingredients(min_protein=15)
+        typer.echo(f"  High protein ingredients (≥15g): {len(high_protein)}")
+
+        # Low calorie ingredients
+        low_calorie = IngredientSearcher.find_low_calorie_ingredients(max_calories=50)
+        typer.echo(f"  Low calorie ingredients (≤50 cal): {len(low_calorie)}")
+
+        # High fiber ingredients
+        high_fiber = IngredientSearcher.find_high_fiber_ingredients(min_fiber=5)
+        typer.echo(f"  High fiber ingredients (≥5g): {len(high_fiber)}")
+
+        # Categories
+        categories = IngredientSearcher.get_ingredient_categories()
+        typer.echo(f"  Available categories: {len(categories)}")
+
+        if config.debug:
+            logger.info("Generated ingredient statistics")
+
+    except Exception as e:
+        typer.echo(f"❌ Error generating ingredient statistics: {e}", err=True)
+        if config.debug:
+            logger.exception("Error generating ingredient statistics")
+        raise typer.Exit(1)
+
+
 def handle_unknown_command(command_name: str):
     """
     Handle unknown commands by suggesting valid subcommands.

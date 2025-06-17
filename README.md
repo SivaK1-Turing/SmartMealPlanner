@@ -9,7 +9,7 @@ The Smart Meal Planner is built with a modular design of eight incremental featu
 1. **Scaffolding & CLI Setup** ✅ (Implemented)
 2. **Database & ORM Integration** ✅ (Implemented)
 3. **Recipe Import & Management** ✅ (Implemented)
-4. **Ingredient Search & Filtering** (Coming soon)
+4. **Ingredient Search & Filtering** ✅ (Implemented)
 5. **Meal Scheduling & Calendar** (Coming soon)
 6. **Nutritional Analysis** (Coming soon)
 7. **Shopping List Export** (Coming soon)
@@ -117,9 +117,9 @@ pytest tests/test_plugin_loader.py
 
 ## Feature 1: Scaffolding & CLI Setup
 
-### Testing Features 1, 2 & 3
+### Testing Features 1, 2, 3 & 4
 
-Test the CLI, database, and recipe functionality:
+Test the CLI, database, recipe, and ingredient functionality:
 
 ```bash
 # Basic functionality
@@ -145,6 +145,15 @@ mealplanner list-recipes --detailed
 mealplanner update-recipe 1
 mealplanner delete-recipe 1
 
+# Ingredient search and management commands (Feature 4)
+mealplanner add-ingredient "Chicken Breast" --category "Meat" --calories 165 --protein 31.0
+mealplanner list-ingredients
+mealplanner search-ingredients --min-protein 20 --max-calories 200
+mealplanner search-ingredients --category "Vegetables" --detailed
+mealplanner ingredient-stats
+mealplanner update-ingredient 1
+mealplanner delete-ingredient 1
+
 # Debug mode
 mealplanner --debug hello
 
@@ -166,21 +175,23 @@ mealplanner --config nonexistent.env hello  # Should show error
 Run the test suite:
 
 ```bash
-# Run all tests (174 tests total)
+# Run all tests (210 tests total)
 pytest tests/ -v
 
-# Run with coverage (79.24% coverage achieved)
+# Run with coverage (72.27% coverage achieved)
 pytest tests/ --cov=src/mealplanner --cov-report=term-missing
 
 # Test specific components
-pytest tests/test_cli.py -v               # 23 tests - CLI functionality
-pytest tests/test_config.py -v            # 22 tests - Configuration management
-pytest tests/test_database.py -v          # 24 tests - Database functionality
-pytest tests/test_health.py -v            # 23 tests - Health checks
-pytest tests/test_models.py -v            # 18 tests - ORM models
-pytest tests/test_plugin_loader.py -v     # 21 tests - Plugin system
-pytest tests/test_recipe_import.py -v     # 22 tests - Recipe import functionality
-pytest tests/test_recipe_management.py -v # 21 tests - Recipe management
+pytest tests/test_cli.py -v                    # 23 tests - CLI functionality
+pytest tests/test_config.py -v                 # 22 tests - Configuration management
+pytest tests/test_database.py -v               # 24 tests - Database functionality
+pytest tests/test_health.py -v                 # 23 tests - Health checks
+pytest tests/test_models.py -v                 # 18 tests - ORM models
+pytest tests/test_plugin_loader.py -v          # 21 tests - Plugin system
+pytest tests/test_recipe_import.py -v          # 22 tests - Recipe import functionality
+pytest tests/test_recipe_management.py -v      # 21 tests - Recipe management
+pytest tests/test_ingredient_search.py -v      # 15 tests - Ingredient search functionality
+pytest tests/test_ingredient_management.py -v  # 21 tests - Ingredient management
 
 # Run tests with detailed output
 pytest tests/ -v --tb=long
@@ -191,9 +202,9 @@ pytest tests/test_cli.py::TestCLIBasics::test_help_output -v
 
 ### Test Results Summary
 
-✅ **All 174 tests passing**
-✅ **79.24% test coverage** (comprehensive testing)
-✅ **Features 1, 2 & 3 fully implemented**
+✅ **All 210 tests passing**
+✅ **72.27% test coverage** (comprehensive testing)
+✅ **Features 1, 2, 3 & 4 fully implemented**
 ✅ **Comprehensive error handling**
 ✅ **JSON logging with debug support**
 ✅ **Plugin system working**
@@ -204,6 +215,9 @@ pytest tests/test_cli.py::TestCLIBasics::test_help_output -v
 ✅ **Recipe import from JSON, CSV, and URLs**
 ✅ **Recipe management with filtering and search**
 ✅ **Data validation and deduplication**
+✅ **Advanced ingredient search with nutritional filtering**
+✅ **Ingredient management with CRUD operations**
+✅ **Nutritional analysis and substitute suggestions**
 
 ## License
 
