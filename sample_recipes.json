@@ -1,0 +1,71 @@
+[
+  {
+    "title": "Spaghetti Carbonara",
+    "description": "Classic Italian pasta dish with eggs, cheese, and pancetta",
+    "prep_time": 15,
+    "cook_time": 20,
+    "servings": 4,
+    "cuisine": "Italian",
+    "dietary_tags": ["quick", "comfort_food"],
+    "instructions": "1. Cook spaghetti according to package directions. 2. In a large bowl, whisk together eggs and cheese. 3. Cook pancetta until crispy. 4. Toss hot pasta with egg mixture and pancetta. 5. Serve immediately.",
+    "calories": 450,
+    "protein": 18,
+    "carbs": 55,
+    "fat": 16
+  },
+  {
+    "title": "Chicken Stir Fry",
+    "description": "Quick and healthy stir fry with vegetables",
+    "prep_time": 10,
+    "cook_time": 15,
+    "servings": 3,
+    "cuisine": "Asian",
+    "dietary_tags": ["healthy", "quick", "gluten_free"],
+    "instructions": "1. Cut chicken into strips. 2. Heat oil in wok. 3. Stir fry chicken until cooked. 4. Add vegetables and sauce. 5. Serve over rice.",
+    "calories": 320,
+    "protein": 25,
+    "carbs": 12,
+    "fat": 8
+  },
+  {
+    "title": "Vegetable Soup",
+    "description": "Hearty vegetable soup perfect for cold days",
+    "prep_time": 20,
+    "cook_time": 40,
+    "servings": 6,
+    "cuisine": "American",
+    "dietary_tags": ["vegetarian", "vegan", "healthy"],
+    "instructions": "1. Chop all vegetables. 2. Sauté onions and garlic. 3. Add remaining vegetables and broth. 4. Simmer for 30 minutes. 5. Season to taste.",
+    "calories": 150,
+    "protein": 5,
+    "carbs": 30,
+    "fat": 2
+  },
+  {
+    "title": "Chocolate Chip Cookies",
+    "description": "Classic homemade chocolate chip cookies",
+    "prep_time": 15,
+    "cook_time": 12,
+    "servings": 24,
+    "cuisine": "American",
+    "dietary_tags": ["dessert", "baking"],
+    "instructions": "1. Cream butter and sugars. 2. Add eggs and vanilla. 3. Mix in flour and chocolate chips. 4. Drop onto baking sheets. 5. Bake at 375°F for 10-12 minutes.",
+    "calories": 180,
+    "protein": 2,
+    "carbs": 24,
+    "fat": 9
+  },
+  {
+    "title": "Greek Salad",
+    "description": "Fresh Mediterranean salad with feta cheese",
+    "prep_time": 15,
+    "servings": 4,
+    "cuisine": "Greek",
+    "dietary_tags": ["vegetarian", "healthy", "mediterranean"],
+    "instructions": "1. Chop tomatoes, cucumbers, and onions. 2. Add olives and feta cheese. 3. Dress with olive oil and lemon juice. 4. Season with oregano and salt.",
+    "calories": 220,
+    "protein": 8,
+    "carbs": 12,
+    "fat": 18
+  }
+]
