@@ -1016,6 +1016,720 @@ def ingredient_stats():
         raise typer.Exit(1)
 
 
+@app.command()
+def schedule_meal(
+    recipe_id: int = typer.Argument(..., help="Recipe ID to schedule"),
+    target_date: str = typer.Argument(..., help="Date to schedule (YYYY-MM-DD)"),
+    meal_type: str = typer.Argument(..., help="Meal type (breakfast, lunch, dinner, snack)"),
+    servings: int = typer.Option(1, "--servings", help="Number of servings"),
+    notes: Optional[str] = typer.Option(None, "--notes", help="Optional notes for the meal"),
+    allow_conflicts: bool = typer.Option(False, "--allow-conflicts", help="Allow multiple meals of same type on same date")
+):
+    """
+    Schedule a meal for a specific date and meal type.
+
+    Schedule a recipe for breakfast, lunch, dinner, or snack on a specific date.
+    By default, conflicts (multiple meals of same type on same date) are not allowed.
+    """
+    from datetime import datetime
+    from .meal_planning import MealPlanner, MealPlanningError
+    from .models import MealType
+
+    config = get_config()
+
+    try:
+        # Parse date
+        try:
+            parsed_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            typer.echo(f"❌ Invalid date format. Use YYYY-MM-DD (e.g., 2024-01-15)", err=True)
+            raise typer.Exit(1)
+
+        # Parse meal type
+        try:
+            parsed_meal_type = MealType(meal_type.lower())
+        except ValueError:
+            valid_types = [mt.value for mt in MealType]
+            typer.echo(f"❌ Invalid meal type. Valid options: {', '.join(valid_types)}", err=True)
+            raise typer.Exit(1)
+
+        # Schedule the meal
+        plan = MealPlanner.schedule_meal(
+            target_date=parsed_date,
+            meal_type=parsed_meal_type,
+            recipe_id=recipe_id,
+            servings=servings,
+            notes=notes,
+            allow_conflicts=allow_conflicts
+        )
+
+        typer.echo("✅ Meal scheduled successfully!")
+        typer.echo(f"Plan ID: {plan.id}")
+        typer.echo(f"Date: {plan.date}")
+        typer.echo(f"Meal Type: {plan.meal_type.value.title()}")
+        typer.echo(f"Recipe ID: {plan.recipe_id}")
+        typer.echo(f"Servings: {plan.servings}")
+        if plan.notes:
+            typer.echo(f"Notes: {plan.notes}")
+
+        if config.debug:
+            logger.info(f"Scheduled meal plan {plan.id} for {parsed_date}")
+
+    except MealPlanningError as e:
+        typer.echo(f"❌ Scheduling failed: {e}", err=True)
+        if config.debug:
+            logger.error(f"Meal scheduling failed: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Error scheduling meal: {e}", err=True)
+        if config.debug:
+            logger.exception("Error scheduling meal")
+        raise typer.Exit(1)
+
+
+@app.command()
+def view_calendar(
+    target_date: Optional[str] = typer.Option(None, "--date", help="Date for calendar view (YYYY-MM-DD), defaults to today"),
+    view_type: str = typer.Option("week", "--view", help="Calendar view type (week, month)"),
+    include_recipes: bool = typer.Option(False, "--detailed", help="Include recipe details"),
+    start_monday: bool = typer.Option(True, "--start-monday/--start-sunday", help="Week starts on Monday or Sunday")
+):
+    """
+    Display a calendar view of scheduled meals.
+
+    Show weekly or monthly calendar with meal plans. Use --detailed to include
+    recipe information in the calendar view.
+    """
+    from datetime import datetime, date
+    from .calendar_management import CalendarManager
+
+    config = get_config()
+
+    try:
+        # Parse target date
+        if target_date:
+            try:
+                parsed_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid date format. Use YYYY-MM-DD (e.g., 2024-01-15)", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_date = date.today()
+
+        if view_type.lower() == "week":
+            calendar_data = CalendarManager.get_weekly_calendar(
+                target_date=parsed_date,
+                start_on_monday=start_monday,
+                include_recipes=include_recipes
+            )
+
+            # Display weekly calendar
+            typer.echo(f"📅 Weekly Calendar - Week {calendar_data['week_number']}")
+            typer.echo(f"Week of {calendar_data['start_date']} to {calendar_data['end_date']}")
+            typer.echo("=" * 70)
+
+            for day in calendar_data['days']:
+                day_header = f"{day['day_name']} {day['date']}"
+                if day['is_today']:
+                    day_header += " (Today)"
+                if day['is_weekend']:
+                    day_header += " 🌅"
+
+                typer.echo(f"\n{day_header}")
+                typer.echo("-" * len(day_header))
+
+                if day['total_meals'] == 0:
+                    typer.echo("  No meals scheduled")
+                else:
+                    for meal_type, meals in day['meals'].items():
+                        if meals:
+                            typer.echo(f"  {meal_type.title()}:")
+                            for meal in meals:
+                                status = "✅" if meal['completed'] else "⏳"
+                                meal_info = f"    {status} Recipe ID {meal['recipe_id']}"
+                                if meal['servings'] > 1:
+                                    meal_info += f" ({meal['servings']} servings)"
+
+                                if include_recipes and 'recipe' in meal:
+                                    recipe = meal['recipe']
+                                    meal_info += f" - {recipe['title']}"
+                                    if recipe['cuisine']:
+                                        meal_info += f" ({recipe['cuisine']})"
+
+                                typer.echo(meal_info)
+
+                                if meal['notes']:
+                                    typer.echo(f"      Note: {meal['notes']}")
+
+                    completion_info = f"  📊 {day['completed_meals']}/{day['total_meals']} meals completed"
+                    typer.echo(completion_info)
+
+        elif view_type.lower() == "month":
+            calendar_data = CalendarManager.get_monthly_calendar(
+                year=parsed_date.year,
+                month=parsed_date.month,
+                include_recipes=include_recipes
+            )
+
+            # Display monthly calendar
+            typer.echo(f"📅 Monthly Calendar - {calendar_data['month_name']} {calendar_data['year']}")
+            typer.echo("=" * 70)
+
+            # Group days by week for better display
+            weeks = []
+            current_week = []
+
+            for day in calendar_data['days']:
+                current_week.append(day)
+                if len(current_week) == 7 or day['date'] == calendar_data['end_date']:
+                    weeks.append(current_week)
+                    current_week = []
+
+            for week_num, week in enumerate(weeks, 1):
+                typer.echo(f"\nWeek {week_num}:")
+                for day in week:
+                    day_info = f"  {day['day']:2d} {day['date'].strftime('%a')}"
+                    if day['is_today']:
+                        day_info += " (Today)"
+
+                    if day['total_meals'] > 0:
+                        day_info += f" - {day['total_meals']} meals"
+                        if day['completed_meals'] > 0:
+                            day_info += f" ({day['completed_meals']} done)"
+
+                    typer.echo(day_info)
+
+        else:
+            typer.echo(f"❌ Invalid view type. Use 'week' or 'month'", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Displayed {view_type} calendar for {parsed_date}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error displaying calendar: {e}", err=True)
+        if config.debug:
+            logger.exception("Error displaying calendar")
+        raise typer.Exit(1)
+
+
+@app.command()
+def list_plans(
+    start_date: Optional[str] = typer.Option(None, "--start", help="Start date (YYYY-MM-DD), defaults to today"),
+    end_date: Optional[str] = typer.Option(None, "--end", help="End date (YYYY-MM-DD), defaults to start date"),
+    meal_type: Optional[str] = typer.Option(None, "--meal-type", help="Filter by meal type"),
+    completed: Optional[bool] = typer.Option(None, "--completed", help="Filter by completion status"),
+    detailed: bool = typer.Option(False, "--detailed", help="Show detailed plan information")
+):
+    """
+    List meal plans with filtering options.
+
+    Display meal plans for a date range with optional filtering by meal type
+    and completion status.
+    """
+    from datetime import datetime, date
+    from .meal_planning import MealPlanner
+    from .models import MealType
+
+    config = get_config()
+
+    try:
+        # Parse dates
+        if start_date:
+            try:
+                parsed_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid start date format. Use YYYY-MM-DD", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_start = date.today()
+
+        if end_date:
+            try:
+                parsed_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid end date format. Use YYYY-MM-DD", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_end = parsed_start
+
+        # Parse meal type filter
+        parsed_meal_type = None
+        if meal_type:
+            try:
+                parsed_meal_type = MealType(meal_type.lower())
+            except ValueError:
+                valid_types = [mt.value for mt in MealType]
+                typer.echo(f"❌ Invalid meal type. Valid options: {', '.join(valid_types)}", err=True)
+                raise typer.Exit(1)
+
+        # Get plans
+        plans = MealPlanner.get_plans_for_date_range(parsed_start, parsed_end)
+
+        # Apply filters
+        if parsed_meal_type:
+            plans = [p for p in plans if p.meal_type == parsed_meal_type]
+
+        if completed is not None:
+            plans = [p for p in plans if p.completed == completed]
+
+        if not plans:
+            typer.echo("No meal plans found matching the criteria.")
+            return
+
+        # Display header
+        date_range = f"{parsed_start}" if parsed_start == parsed_end else f"{parsed_start} to {parsed_end}"
+        typer.echo(f"Meal Plans ({date_range}) - {len(plans)} found")
+        typer.echo("=" * 70)
+
+        # Get recipe details for display
+        recipe_cache = {}
+        if plans:
+            from .database import get_db_session
+            from .models import Recipe
+
+            with get_db_session() as session:
+                recipe_ids = list(set(plan.recipe_id for plan in plans))
+                recipes = session.query(Recipe).filter(Recipe.id.in_(recipe_ids)).all()
+                # Create a cache with recipe data, not objects
+                for recipe in recipes:
+                    recipe_cache[recipe.id] = {
+                        'title': recipe.title,
+                        'cuisine': recipe.cuisine,
+                        'prep_time': recipe.prep_time,
+                        'cook_time': recipe.cook_time
+                    }
+
+        # Display plans
+        for plan in plans:
+            status = "✅" if plan.completed else "⏳"
+            recipe_title = "Unknown Recipe"
+
+            if plan.recipe_id in recipe_cache:
+                recipe_title = recipe_cache[plan.recipe_id]['title']
+
+            plan_info = f"{status} [{plan.id}] {plan.date} - {plan.meal_type.value.title()}: {recipe_title}"
+            if plan.servings > 1:
+                plan_info += f" ({plan.servings} servings)"
+
+            typer.echo(plan_info)
+
+            if detailed:
+                if plan.notes:
+                    typer.echo(f"    Notes: {plan.notes}")
+
+                if plan.recipe_id in recipe_cache:
+                    recipe_data = recipe_cache[plan.recipe_id]
+                    if recipe_data['cuisine']:
+                        typer.echo(f"    Cuisine: {recipe_data['cuisine']}")
+                    if recipe_data['prep_time'] or recipe_data['cook_time']:
+                        time_info = []
+                        if recipe_data['prep_time']:
+                            time_info.append(f"Prep: {recipe_data['prep_time']}min")
+                        if recipe_data['cook_time']:
+                            time_info.append(f"Cook: {recipe_data['cook_time']}min")
+                        typer.echo(f"    Time: {', '.join(time_info)}")
+
+                typer.echo(f"    Created: {plan.created_at.strftime('%Y-%m-%d %H:%M')}")
+                typer.echo("")
+
+        # Summary
+        completed_count = sum(1 for p in plans if p.completed)
+        completion_rate = (completed_count / len(plans) * 100) if plans else 0
+        typer.echo(f"\n📊 Summary: {completed_count}/{len(plans)} completed ({completion_rate:.1f}%)")
+
+        if config.debug:
+            logger.info(f"Listed {len(plans)} meal plans for {date_range}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error listing meal plans: {e}", err=True)
+        if config.debug:
+            logger.exception("Error listing meal plans")
+        raise typer.Exit(1)
+
+
+@app.command()
+def complete_meal(
+    plan_id: int = typer.Argument(..., help="Meal plan ID to mark as completed"),
+    uncomplete: bool = typer.Option(False, "--uncomplete", help="Mark as incomplete instead")
+):
+    """
+    Mark a meal plan as completed or incomplete.
+
+    Use this command to track which meals you've actually prepared and eaten.
+    """
+    from .meal_planning import MealPlanner
+
+    config = get_config()
+
+    try:
+        # Update completion status
+        plan = MealPlanner.complete_meal(plan_id, completed=not uncomplete)
+
+        if not plan:
+            typer.echo(f"❌ Meal plan with ID {plan_id} not found.", err=True)
+            raise typer.Exit(1)
+
+        status = "incomplete" if uncomplete else "completed"
+        typer.echo(f"✅ Meal plan {plan_id} marked as {status}!")
+        typer.echo(f"Date: {plan.date}")
+        typer.echo(f"Meal Type: {plan.meal_type.value.title()}")
+        typer.echo(f"Recipe ID: {plan.recipe_id}")
+
+        if config.debug:
+            logger.info(f"Marked meal plan {plan_id} as {status}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error updating meal plan: {e}", err=True)
+        if config.debug:
+            logger.exception("Error updating meal plan completion")
+        raise typer.Exit(1)
+
+
+@app.command()
+def update_plan(
+    plan_id: int = typer.Argument(..., help="Meal plan ID to update")
+):
+    """
+    Interactively update a meal plan's details.
+
+    This command will prompt you to update various fields of the meal plan.
+    Press Enter to keep the current value, or type a new value to change it.
+    """
+    from .meal_planning import MealPlanner
+    from .models import MealType
+    from datetime import datetime
+
+    config = get_config()
+
+    try:
+        # Get the current plan
+        plan = MealPlanner.get_meal_plan(plan_id)
+        if not plan:
+            typer.echo(f"❌ Meal plan with ID {plan_id} not found.", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Current meal plan details:")
+        typer.echo(f"  Date: {plan.date}")
+        typer.echo(f"  Meal Type: {plan.meal_type.value.title()}")
+        typer.echo(f"  Recipe ID: {plan.recipe_id}")
+        typer.echo(f"  Servings: {plan.servings}")
+        typer.echo(f"  Notes: {plan.notes or 'None'}")
+        typer.echo(f"  Completed: {'Yes' if plan.completed else 'No'}")
+        typer.echo("\nUpdate meal plan (press Enter to keep current value):")
+
+        updates = {}
+
+        # Date
+        new_date = typer.prompt(f"Date (YYYY-MM-DD)", default=str(plan.date))
+        if new_date != str(plan.date):
+            try:
+                parsed_date = datetime.strptime(new_date, "%Y-%m-%d").date()
+                updates['date'] = parsed_date
+            except ValueError:
+                typer.echo("Invalid date format, keeping current value")
+
+        # Meal type
+        current_meal_type = plan.meal_type.value
+        valid_types = [mt.value for mt in MealType]
+        new_meal_type = typer.prompt(f"Meal type ({', '.join(valid_types)})", default=current_meal_type)
+        if new_meal_type != current_meal_type:
+            if new_meal_type.lower() in valid_types:
+                updates['meal_type'] = new_meal_type.lower()
+            else:
+                typer.echo("Invalid meal type, keeping current value")
+
+        # Recipe ID
+        new_recipe_id = typer.prompt(f"Recipe ID", default=str(plan.recipe_id))
+        if new_recipe_id != str(plan.recipe_id):
+            try:
+                updates['recipe_id'] = int(new_recipe_id)
+            except ValueError:
+                typer.echo("Invalid recipe ID, keeping current value")
+
+        # Servings
+        new_servings = typer.prompt(f"Servings", default=str(plan.servings))
+        if new_servings != str(plan.servings):
+            try:
+                updates['servings'] = int(new_servings)
+            except ValueError:
+                typer.echo("Invalid servings, keeping current value")
+
+        # Notes
+        current_notes = plan.notes or ""
+        new_notes = typer.prompt(f"Notes", default=current_notes)
+        if new_notes != current_notes:
+            updates['notes'] = new_notes if new_notes else None
+
+        # Completed
+        current_completed = "yes" if plan.completed else "no"
+        new_completed = typer.prompt(f"Completed (yes/no)", default=current_completed)
+        if new_completed.lower() != current_completed:
+            if new_completed.lower() in ['yes', 'y', 'true', '1']:
+                updates['completed'] = True
+            elif new_completed.lower() in ['no', 'n', 'false', '0']:
+                updates['completed'] = False
+
+        if not updates:
+            typer.echo("No changes made.")
+            return
+
+        # Apply updates
+        updated_plan = MealPlanner.update_meal_plan(plan_id, updates)
+        if updated_plan:
+            typer.echo("✅ Meal plan updated successfully!")
+            typer.echo(f"Date: {updated_plan.date}")
+            typer.echo(f"Meal Type: {updated_plan.meal_type.value.title()}")
+            typer.echo(f"Recipe ID: {updated_plan.recipe_id}")
+            typer.echo(f"Servings: {updated_plan.servings}")
+            if updated_plan.notes:
+                typer.echo(f"Notes: {updated_plan.notes}")
+            typer.echo(f"Completed: {'Yes' if updated_plan.completed else 'No'}")
+        else:
+            typer.echo("❌ Failed to update meal plan.", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Updated meal plan {plan_id}: {list(updates.keys())}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error updating meal plan: {e}", err=True)
+        if config.debug:
+            logger.exception("Error updating meal plan")
+        raise typer.Exit(1)
+
+
+@app.command()
+def delete_plan(
+    plan_id: int = typer.Argument(..., help="Meal plan ID to delete"),
+    force: bool = typer.Option(False, "--force", help="Skip confirmation prompt")
+):
+    """
+    Delete a meal plan.
+
+    Permanently remove a meal plan from the schedule.
+    Use --force to skip the confirmation prompt.
+    """
+    from .meal_planning import MealPlanner
+
+    config = get_config()
+
+    try:
+        # Get the plan for confirmation
+        plan = MealPlanner.get_meal_plan(plan_id)
+        if not plan:
+            typer.echo(f"❌ Meal plan with ID {plan_id} not found.", err=True)
+            raise typer.Exit(1)
+
+        # Show plan details
+        typer.echo("Meal plan to delete:")
+        typer.echo(f"  ID: {plan.id}")
+        typer.echo(f"  Date: {plan.date}")
+        typer.echo(f"  Meal Type: {plan.meal_type.value.title()}")
+        typer.echo(f"  Recipe ID: {plan.recipe_id}")
+
+        # Confirmation
+        if not force:
+            confirm = typer.confirm(
+                f"\nAre you sure you want to delete this meal plan?"
+            )
+            if not confirm:
+                typer.echo("Deletion cancelled.")
+                return
+
+        # Delete the plan
+        success = MealPlanner.delete_meal_plan(plan_id)
+        if success:
+            typer.echo(f"✅ Meal plan {plan_id} deleted successfully!")
+        else:
+            typer.echo("❌ Failed to delete meal plan.", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Deleted meal plan {plan_id}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error deleting meal plan: {e}", err=True)
+        if config.debug:
+            logger.exception("Error deleting meal plan")
+        raise typer.Exit(1)
+
+
+@app.command()
+def clear_schedule(
+    start_date: str = typer.Argument(..., help="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = typer.Option(None, "--end", help="End date (YYYY-MM-DD), defaults to start date"),
+    meal_type: Optional[str] = typer.Option(None, "--meal-type", help="Clear only specific meal type"),
+    force: bool = typer.Option(False, "--force", help="Skip confirmation prompt")
+):
+    """
+    Clear meal plans for a date range.
+
+    Remove all meal plans within the specified date range. Optionally filter
+    by meal type to clear only specific types of meals.
+    """
+    from datetime import datetime
+    from .meal_planning import MealPlanner
+    from .models import MealType
+
+    config = get_config()
+
+    try:
+        # Parse dates
+        try:
+            parsed_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            typer.echo(f"❌ Invalid start date format. Use YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+
+        if end_date:
+            try:
+                parsed_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid end date format. Use YYYY-MM-DD", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_end = None
+
+        # Parse meal type filter
+        parsed_meal_type = None
+        if meal_type:
+            try:
+                parsed_meal_type = MealType(meal_type.lower())
+            except ValueError:
+                valid_types = [mt.value for mt in MealType]
+                typer.echo(f"❌ Invalid meal type. Valid options: {', '.join(valid_types)}", err=True)
+                raise typer.Exit(1)
+
+        # Show what will be cleared
+        date_range = f"{parsed_start}" if not parsed_end else f"{parsed_start} to {parsed_end}"
+        meal_filter = f" ({parsed_meal_type.value} only)" if parsed_meal_type else ""
+
+        typer.echo(f"This will clear meal plans for: {date_range}{meal_filter}")
+
+        # Confirmation
+        if not force:
+            confirm = typer.confirm("Are you sure you want to clear these meal plans?")
+            if not confirm:
+                typer.echo("Clear operation cancelled.")
+                return
+
+        # Clear the schedule
+        count = MealPlanner.clear_schedule(
+            start_date=parsed_start,
+            end_date=parsed_end,
+            meal_type=parsed_meal_type
+        )
+
+        typer.echo(f"✅ Cleared {count} meal plan(s) successfully!")
+
+        if config.debug:
+            logger.info(f"Cleared {count} meal plans for {date_range}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error clearing schedule: {e}", err=True)
+        if config.debug:
+            logger.exception("Error clearing schedule")
+        raise typer.Exit(1)
+
+
+@app.command()
+def plan_stats(
+    start_date: Optional[str] = typer.Option(None, "--start", help="Start date (YYYY-MM-DD), defaults to this week"),
+    end_date: Optional[str] = typer.Option(None, "--end", help="End date (YYYY-MM-DD), defaults to start date"),
+    period: str = typer.Option("week", "--period", help="Predefined period (week, month, year)")
+):
+    """
+    Show meal planning statistics and analytics.
+
+    Display statistics about meal plans including completion rates, most planned
+    recipes, and meal type distribution for a specified period.
+    """
+    from datetime import datetime, date, timedelta
+    from .meal_planning import MealPlanner
+    from .calendar_management import CalendarManager
+
+    config = get_config()
+
+    try:
+        # Determine date range
+        if start_date and end_date:
+            # Use provided dates
+            try:
+                parsed_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+                parsed_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid date format. Use YYYY-MM-DD", err=True)
+                raise typer.Exit(1)
+        else:
+            # Use predefined period
+            today = date.today()
+
+            if period.lower() == "week":
+                parsed_start, parsed_end = CalendarManager.get_week_dates(today)
+            elif period.lower() == "month":
+                parsed_start, parsed_end = CalendarManager.get_month_dates(today.year, today.month)
+            elif period.lower() == "year":
+                parsed_start = date(today.year, 1, 1)
+                parsed_end = date(today.year, 12, 31)
+            else:
+                typer.echo(f"❌ Invalid period. Use 'week', 'month', or 'year'", err=True)
+                raise typer.Exit(1)
+
+        # Get statistics
+        stats = MealPlanner.get_meal_plan_statistics(parsed_start, parsed_end)
+        summary = CalendarManager.get_calendar_summary(parsed_start, parsed_end)
+
+        # Display statistics
+        typer.echo(f"📊 Meal Planning Statistics")
+        typer.echo(f"Period: {parsed_start} to {parsed_end}")
+        typer.echo("=" * 50)
+
+        # Basic stats
+        typer.echo(f"\n📅 Planning Overview:")
+        typer.echo(f"  Total meal plans: {stats['total_plans']}")
+        typer.echo(f"  Completed meals: {stats['completed_plans']}")
+        typer.echo(f"  Completion rate: {stats['completion_rate']:.1f}%")
+        typer.echo(f"  Days with meals: {summary['meal_statistics']['days_with_meals']}")
+        typer.echo(f"  Average meals per day: {summary['meal_statistics']['avg_meals_per_day']}")
+
+        # Meal type distribution
+        typer.echo(f"\n🍽️ Meal Type Distribution:")
+        for meal_type, count in stats['meal_type_counts'].items():
+            percentage = (count / stats['total_plans'] * 100) if stats['total_plans'] > 0 else 0
+            typer.echo(f"  {meal_type.title()}: {count} ({percentage:.1f}%)")
+
+        # Most planned recipes
+        if stats['most_planned_recipes']:
+            typer.echo(f"\n🏆 Most Planned Recipes:")
+
+            # Get recipe details
+            from .database import get_db_session
+            from .models import Recipe
+
+            with get_db_session() as session:
+                for recipe_id, count in stats['most_planned_recipes']:
+                    recipe = session.query(Recipe).filter(Recipe.id == recipe_id).first()
+                    recipe_title = recipe.title if recipe else f"Recipe {recipe_id}"
+                    typer.echo(f"  {recipe_title}: {count} times")
+
+        # Recipe diversity
+        typer.echo(f"\n🎯 Recipe Diversity:")
+        typer.echo(f"  Unique recipes used: {summary['recipe_statistics']['unique_recipes']}")
+        if stats['total_plans'] > 0:
+            diversity_rate = (summary['recipe_statistics']['unique_recipes'] / stats['total_plans'] * 100)
+            typer.echo(f"  Recipe diversity rate: {diversity_rate:.1f}%")
+
+        if config.debug:
+            logger.info(f"Generated meal planning statistics for {parsed_start} to {parsed_end}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error generating statistics: {e}", err=True)
+        if config.debug:
+            logger.exception("Error generating meal planning statistics")
+        raise typer.Exit(1)
+
+
 def handle_unknown_command(command_name: str):
     """
     Handle unknown commands by suggesting valid subcommands.

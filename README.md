@@ -10,7 +10,7 @@ The Smart Meal Planner is built with a modular design of eight incremental featu
 2. **Database & ORM Integration** ✅ (Implemented)
 3. **Recipe Import & Management** ✅ (Implemented)
 4. **Ingredient Search & Filtering** ✅ (Implemented)
-5. **Meal Scheduling & Calendar** (Coming soon)
+5. **Meal Scheduling & Calendar** ✅ (Implemented)
 6. **Nutritional Analysis** (Coming soon)
 7. **Shopping List Export** (Coming soon)
 8. **Email Notifications & Packaging** (Coming soon)
@@ -117,9 +117,9 @@ pytest tests/test_plugin_loader.py
 
 ## Feature 1: Scaffolding & CLI Setup
 
-### Testing Features 1, 2, 3 & 4
+### Testing Features 1, 2, 3, 4 & 5
 
-Test the CLI, database, recipe, and ingredient functionality:
+Test the CLI, database, recipe, ingredient, and meal planning functionality:
 
 ```bash
 # Basic functionality
@@ -154,6 +154,16 @@ mealplanner ingredient-stats
 mealplanner update-ingredient 1
 mealplanner delete-ingredient 1
 
+# Meal scheduling and calendar commands (Feature 5)
+mealplanner schedule-meal 2 2025-06-20 dinner --servings 2 --notes "Family dinner"
+mealplanner view-calendar --date 2025-06-20 --view week --detailed
+mealplanner list-plans --start 2025-06-20 --end 2025-06-21
+mealplanner complete-meal 1
+mealplanner update-plan 1
+mealplanner delete-plan 3
+mealplanner clear-schedule 2025-06-20 --end 2025-06-22
+mealplanner plan-stats --period week
+
 # Debug mode
 mealplanner --debug hello
 
@@ -175,10 +185,10 @@ mealplanner --config nonexistent.env hello  # Should show error
 Run the test suite:
 
 ```bash
-# Run all tests (210 tests total)
+# Run all tests (238 tests total)
 pytest tests/ -v
 
-# Run with coverage (72.27% coverage achieved)
+# Run with coverage (61.52% coverage achieved)
 pytest tests/ --cov=src/mealplanner --cov-report=term-missing
 
 # Test specific components
@@ -192,6 +202,8 @@ pytest tests/test_recipe_import.py -v          # 22 tests - Recipe import functi
 pytest tests/test_recipe_management.py -v      # 21 tests - Recipe management
 pytest tests/test_ingredient_search.py -v      # 15 tests - Ingredient search functionality
 pytest tests/test_ingredient_management.py -v  # 21 tests - Ingredient management
+pytest tests/test_meal_planning.py -v          # 16 tests - Meal planning functionality
+pytest tests/test_calendar_management.py -v    # 12 tests - Calendar management
 
 # Run tests with detailed output
 pytest tests/ -v --tb=long
@@ -202,9 +214,9 @@ pytest tests/test_cli.py::TestCLIBasics::test_help_output -v
 
 ### Test Results Summary
 
-✅ **All 210 tests passing**
-✅ **72.27% test coverage** (comprehensive testing)
-✅ **Features 1, 2, 3 & 4 fully implemented**
+✅ **All 238 tests passing**
+✅ **61.52% test coverage** (comprehensive testing)
+✅ **Features 1, 2, 3, 4 & 5 fully implemented**
 ✅ **Comprehensive error handling**
 ✅ **JSON logging with debug support**
 ✅ **Plugin system working**
@@ -218,6 +230,9 @@ pytest tests/test_cli.py::TestCLIBasics::test_help_output -v
 ✅ **Advanced ingredient search with nutritional filtering**
 ✅ **Ingredient management with CRUD operations**
 ✅ **Nutritional analysis and substitute suggestions**
+✅ **Comprehensive meal scheduling with conflict detection**
+✅ **Calendar views with weekly and monthly layouts**
+✅ **Meal completion tracking and analytics**
 
 ## License
 
