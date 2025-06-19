@@ -1,0 +1,67 @@
+[
+  {
+    "title": "Grilled Chicken Breast",
+    "description": "Simple grilled chicken breast with herbs",
+    "prep_time": 10,
+    "cook_time": 15,
+    "servings": 1,
+    "cuisine": "American",
+    "calories": 300,
+    "protein": 55,
+    "carbs": 0,
+    "fat": 7,
+    "fiber": 0,
+    "sugar": 0,
+    "sodium": 400,
+    "ingredients": [
+      {
+        "name": "Chicken breast",
+        "quantity": 200,
+        "unit": "grams"
+      }
+    ],
+    "instructions": [
+      "Season chicken breast with herbs",
+      "Grill for 6-8 minutes per side",
+      "Let rest for 5 minutes before serving"
+    ]
+  },
+  {
+    "title": "Quinoa Salad",
+    "description": "Healthy quinoa salad with vegetables",
+    "prep_time": 15,
+    "cook_time": 20,
+    "servings": 2,
+    "cuisine": "Mediterranean",
+    "calories": 350,
+    "protein": 12,
+    "carbs": 58,
+    "fat": 8,
+    "fiber": 6,
+    "sugar": 4,
+    "sodium": 300,
+    "ingredients": [
+      {
+        "name": "Quinoa",
+        "quantity": 100,
+        "unit": "grams"
+      },
+      {
+        "name": "Cucumber",
+        "quantity": 150,
+        "unit": "grams"
+      },
+      {
+        "name": "Tomatoes",
+        "quantity": 100,
+        "unit": "grams"
+      }
+    ],
+    "instructions": [
+      "Cook quinoa according to package directions",
+      "Dice cucumber and tomatoes",
+      "Mix all ingredients together",
+      "Season with olive oil and lemon"
+    ]
+  }
+]

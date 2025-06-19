@@ -1730,6 +1730,444 @@ def plan_stats(
         raise typer.Exit(1)
 
 
+@app.command()
+def analyze_recipe(
+    recipe_id: int = typer.Argument(..., help="Recipe ID to analyze"),
+    servings: int = typer.Option(1, "--servings", help="Number of servings to analyze")
+):
+    """
+    Analyze the nutritional content of a recipe.
+
+    Display detailed nutritional information including calories, macronutrients,
+    and micronutrients for the specified number of servings.
+    """
+    from .nutritional_analysis import NutritionalAnalyzer
+
+    config = get_config()
+
+    try:
+        # Analyze the recipe
+        nutrition = NutritionalAnalyzer.analyze_recipe(recipe_id, servings)
+
+        if not nutrition:
+            typer.echo(f"❌ Recipe with ID {recipe_id} not found.", err=True)
+            raise typer.Exit(1)
+
+        # Get recipe details for display
+        from .database import get_db_session
+        from .models import Recipe
+
+        with get_db_session() as session:
+            recipe = session.query(Recipe).filter(Recipe.id == recipe_id).first()
+            recipe_title = recipe.title if recipe else f"Recipe {recipe_id}"
+
+        # Display analysis
+        typer.echo(f"🔬 Nutritional Analysis: {recipe_title}")
+        if servings > 1:
+            typer.echo(f"Servings: {servings}")
+        typer.echo("=" * 50)
+
+        # Macronutrients
+        typer.echo(f"\n📊 Macronutrients:")
+        typer.echo(f"  Calories: {nutrition.calories:.0f}")
+        typer.echo(f"  Protein: {nutrition.protein:.1f}g")
+        typer.echo(f"  Carbohydrates: {nutrition.carbs:.1f}g")
+        typer.echo(f"  Fat: {nutrition.fat:.1f}g")
+
+        # Micronutrients
+        typer.echo(f"\n🌿 Micronutrients:")
+        typer.echo(f"  Fiber: {nutrition.fiber:.1f}g")
+        typer.echo(f"  Sugar: {nutrition.sugar:.1f}g")
+        typer.echo(f"  Sodium: {nutrition.sodium:.0f}mg")
+
+        # Macro ratios
+        macro_ratios = NutritionalAnalyzer.calculate_macro_ratios(nutrition)
+        typer.echo(f"\n⚖️ Macro Ratios:")
+        typer.echo(f"  Protein: {macro_ratios['protein']:.1f}%")
+        typer.echo(f"  Carbs: {macro_ratios['carbs']:.1f}%")
+        typer.echo(f"  Fat: {macro_ratios['fat']:.1f}%")
+
+        # Nutritional balance assessment
+        balance = NutritionalAnalyzer.assess_nutritional_balance(nutrition)
+        typer.echo(f"\n🎯 Nutritional Balance:")
+        typer.echo(f"  Balance Score: {balance['balance_score']}/{balance['max_score']} ({balance['balance_percentage']:.1f}%)")
+
+        if balance['recommendations']:
+            typer.echo(f"\n💡 Recommendations:")
+            for rec in balance['recommendations']:
+                typer.echo(f"  • {rec}")
+
+        if config.debug:
+            logger.info(f"Analyzed recipe {recipe_id} nutrition for {servings} servings")
+
+    except Exception as e:
+        typer.echo(f"❌ Error analyzing recipe: {e}", err=True)
+        if config.debug:
+            logger.exception("Error analyzing recipe nutrition")
+        raise typer.Exit(1)
+
+
+@app.command()
+def nutrition_summary(
+    target_date: Optional[str] = typer.Option(None, "--date", help="Date for analysis (YYYY-MM-DD), defaults to today"),
+    period: str = typer.Option("day", "--period", help="Analysis period (day, week, month)"),
+    detailed: bool = typer.Option(False, "--detailed", help="Show detailed breakdown by meal")
+):
+    """
+    Show nutritional summary for a day, week, or month.
+
+    Analyze the nutritional content of all scheduled meals for the specified
+    period and provide a comprehensive summary.
+    """
+    from datetime import datetime, date
+    from .nutritional_analysis import NutritionalAnalyzer
+    from .calendar_management import CalendarManager
+
+    config = get_config()
+
+    try:
+        # Parse target date
+        if target_date:
+            try:
+                parsed_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid date format. Use YYYY-MM-DD (e.g., 2024-01-15)", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_date = date.today()
+
+        if period.lower() == "day":
+            # Daily analysis
+            analysis = NutritionalAnalyzer.analyze_daily_nutrition(parsed_date)
+
+            typer.echo(f"🍽️ Daily Nutrition Summary - {analysis['date']}")
+            typer.echo("=" * 50)
+
+            if analysis['meal_count'] == 0:
+                typer.echo("No meals scheduled for this date.")
+                return
+
+            # Total nutrition
+            total = analysis['total_nutrition']
+            typer.echo(f"\n📊 Total Daily Nutrition:")
+            typer.echo(f"  Calories: {total['calories']:.0f}")
+            typer.echo(f"  Protein: {total['protein']:.1f}g")
+            typer.echo(f"  Carbs: {total['carbs']:.1f}g")
+            typer.echo(f"  Fat: {total['fat']:.1f}g")
+            typer.echo(f"  Fiber: {total['fiber']:.1f}g")
+            typer.echo(f"  Sodium: {total['sodium']:.0f}mg")
+
+            # Meal breakdown
+            if detailed and analysis['meal_nutrition']:
+                typer.echo(f"\n🍽️ Breakdown by Meal:")
+                for meal_type, nutrition in analysis['meal_nutrition'].items():
+                    typer.echo(f"  {meal_type.title()}:")
+                    typer.echo(f"    Calories: {nutrition['calories']:.0f}")
+                    typer.echo(f"    Protein: {nutrition['protein']:.1f}g")
+                    typer.echo(f"    Carbs: {nutrition['carbs']:.1f}g")
+                    typer.echo(f"    Fat: {nutrition['fat']:.1f}g")
+
+            # Macro ratios
+            from .nutritional_analysis import NutritionData
+            nutrition_data = NutritionData(**total)
+            macro_ratios = NutritionalAnalyzer.calculate_macro_ratios(nutrition_data)
+            typer.echo(f"\n⚖️ Macro Ratios:")
+            typer.echo(f"  Protein: {macro_ratios['protein']:.1f}%")
+            typer.echo(f"  Carbs: {macro_ratios['carbs']:.1f}%")
+            typer.echo(f"  Fat: {macro_ratios['fat']:.1f}%")
+
+            # Meal completion
+            typer.echo(f"\n✅ Meal Completion: {analysis['completed_meals']}/{analysis['meal_count']} meals completed")
+
+        elif period.lower() == "week":
+            # Weekly analysis
+            start_date, end_date = CalendarManager.get_week_dates(parsed_date)
+            analysis = NutritionalAnalyzer.analyze_period_nutrition(start_date, end_date)
+
+            typer.echo(f"📅 Weekly Nutrition Summary")
+            typer.echo(f"Week of {start_date} to {end_date}")
+            typer.echo("=" * 50)
+
+            # Average daily nutrition
+            avg = analysis['average_daily_nutrition']
+            typer.echo(f"\n📊 Average Daily Nutrition:")
+            typer.echo(f"  Calories: {avg['calories']:.0f}")
+            typer.echo(f"  Protein: {avg['protein']:.1f}g")
+            typer.echo(f"  Carbs: {avg['carbs']:.1f}g")
+            typer.echo(f"  Fat: {avg['fat']:.1f}g")
+            typer.echo(f"  Fiber: {avg['fiber']:.1f}g")
+            typer.echo(f"  Sodium: {avg['sodium']:.0f}mg")
+
+            # Weekly totals
+            total = analysis['total_nutrition']
+            typer.echo(f"\n📈 Weekly Totals:")
+            typer.echo(f"  Calories: {total['calories']:.0f}")
+            typer.echo(f"  Protein: {total['protein']:.1f}g")
+            typer.echo(f"  Carbs: {total['carbs']:.1f}g")
+            typer.echo(f"  Fat: {total['fat']:.1f}g")
+
+            # Meal type breakdown
+            if analysis['meal_type_totals']:
+                typer.echo(f"\n🍽️ Weekly Totals by Meal Type:")
+                for meal_type, nutrition in analysis['meal_type_totals'].items():
+                    typer.echo(f"  {meal_type.title()}: {nutrition['calories']:.0f} calories")
+
+        elif period.lower() == "month":
+            # Monthly analysis
+            start_date, end_date = CalendarManager.get_month_dates(parsed_date.year, parsed_date.month)
+            analysis = NutritionalAnalyzer.analyze_period_nutrition(start_date, end_date)
+
+            typer.echo(f"📅 Monthly Nutrition Summary")
+            typer.echo(f"{parsed_date.strftime('%B %Y')}")
+            typer.echo("=" * 50)
+
+            # Average daily nutrition
+            avg = analysis['average_daily_nutrition']
+            typer.echo(f"\n📊 Average Daily Nutrition:")
+            typer.echo(f"  Calories: {avg['calories']:.0f}")
+            typer.echo(f"  Protein: {avg['protein']:.1f}g")
+            typer.echo(f"  Carbs: {avg['carbs']:.1f}g")
+            typer.echo(f"  Fat: {avg['fat']:.1f}g")
+            typer.echo(f"  Fiber: {avg['fiber']:.1f}g")
+            typer.echo(f"  Sodium: {avg['sodium']:.0f}mg")
+
+            # Monthly totals
+            total = analysis['total_nutrition']
+            typer.echo(f"\n📈 Monthly Totals:")
+            typer.echo(f"  Calories: {total['calories']:.0f}")
+            typer.echo(f"  Protein: {total['protein']:.1f}g")
+            typer.echo(f"  Days analyzed: {analysis['total_days']}")
+
+        else:
+            typer.echo(f"❌ Invalid period. Use 'day', 'week', or 'month'", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Generated {period} nutrition summary for {parsed_date}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error generating nutrition summary: {e}", err=True)
+        if config.debug:
+            logger.exception("Error generating nutrition summary")
+        raise typer.Exit(1)
+
+
+@app.command()
+def set_nutrition_goals(
+    goal_type: str = typer.Argument(..., help="Goal type (weight_loss, weight_gain, maintenance, muscle_gain, endurance, custom)"),
+    daily_calories: float = typer.Argument(..., help="Target daily calories"),
+    protein_ratio: Optional[float] = typer.Option(None, "--protein", help="Protein percentage (e.g., 30 for 30%)"),
+    carbs_ratio: Optional[float] = typer.Option(None, "--carbs", help="Carbs percentage (e.g., 40 for 40%)"),
+    fat_ratio: Optional[float] = typer.Option(None, "--fat", help="Fat percentage (e.g., 30 for 30%)"),
+    daily_fiber: Optional[float] = typer.Option(None, "--fiber", help="Daily fiber goal in grams"),
+    daily_sodium_max: Optional[float] = typer.Option(None, "--sodium-max", help="Maximum daily sodium in mg")
+):
+    """
+    Set nutritional goals for tracking progress.
+
+    Define your daily nutritional targets based on your health and fitness goals.
+    The system will use these goals to track your progress and provide recommendations.
+    """
+    from .nutritional_goals import GoalType, NutritionalGoalManager
+
+    config = get_config()
+
+    try:
+        # Parse goal type
+        try:
+            parsed_goal_type = GoalType(goal_type.lower())
+        except ValueError:
+            valid_types = [gt.value for gt in GoalType]
+            typer.echo(f"❌ Invalid goal type. Valid options: {', '.join(valid_types)}", err=True)
+            raise typer.Exit(1)
+
+        # Validate ratios sum to 100 if all provided
+        overrides = {}
+        if protein_ratio is not None:
+            overrides['protein_ratio'] = protein_ratio
+        if carbs_ratio is not None:
+            overrides['carbs_ratio'] = carbs_ratio
+        if fat_ratio is not None:
+            overrides['fat_ratio'] = fat_ratio
+        if daily_fiber is not None:
+            overrides['daily_fiber'] = daily_fiber
+        if daily_sodium_max is not None:
+            overrides['daily_sodium_max'] = daily_sodium_max
+
+        # Check if all ratios are provided and sum to 100
+        if all(key in overrides for key in ['protein_ratio', 'carbs_ratio', 'fat_ratio']):
+            total_ratio = overrides['protein_ratio'] + overrides['carbs_ratio'] + overrides['fat_ratio']
+            if abs(total_ratio - 100) > 0.1:
+                typer.echo(f"❌ Macro ratios must sum to 100%. Current sum: {total_ratio}%", err=True)
+                raise typer.Exit(1)
+
+        # Create goals
+        goals = NutritionalGoalManager.create_goals_from_template(
+            goal_type=parsed_goal_type,
+            daily_calories=daily_calories,
+            **overrides
+        )
+
+        # Save goals to a simple file (in a real app, this would be in the database)
+        import json
+        from pathlib import Path
+
+        goals_file = Path("nutrition_goals.json")
+        with open(goals_file, 'w') as f:
+            json.dump(goals.to_dict(), f, indent=2)
+
+        # Display the goals
+        typer.echo("✅ Nutritional goals set successfully!")
+        typer.echo(f"\n🎯 Your {goals.goal_type.value.replace('_', ' ').title()} Goals:")
+        typer.echo("=" * 50)
+
+        typer.echo(f"\n📊 Daily Targets:")
+        typer.echo(f"  Calories: {goals.daily_calories:.0f}")
+        typer.echo(f"  Protein: {goals.daily_protein:.1f}g ({goals.protein_ratio:.0f}%)")
+        typer.echo(f"  Carbs: {goals.daily_carbs:.1f}g ({goals.carbs_ratio:.0f}%)")
+        typer.echo(f"  Fat: {goals.daily_fat:.1f}g ({goals.fat_ratio:.0f}%)")
+
+        if goals.daily_fiber:
+            typer.echo(f"  Fiber: {goals.daily_fiber:.0f}g")
+        if goals.daily_sodium_max:
+            typer.echo(f"  Sodium (max): {goals.daily_sodium_max:.0f}mg")
+
+        typer.echo(f"\n💡 Use 'mealplanner nutrition-progress' to track your progress!")
+
+        if config.debug:
+            logger.info(f"Set nutrition goals: {goals.goal_type.value}, {daily_calories} calories")
+
+    except Exception as e:
+        typer.echo(f"❌ Error setting nutrition goals: {e}", err=True)
+        if config.debug:
+            logger.exception("Error setting nutrition goals")
+        raise typer.Exit(1)
+
+
+@app.command()
+def nutrition_progress(
+    target_date: Optional[str] = typer.Option(None, "--date", help="Date for progress analysis (YYYY-MM-DD), defaults to today"),
+    period: str = typer.Option("day", "--period", help="Analysis period (day, week)")
+):
+    """
+    Track progress towards nutritional goals.
+
+    Compare your actual nutrition intake against your set goals and get
+    personalized recommendations for improvement.
+    """
+    from datetime import datetime, date
+    from .nutritional_goals import NutritionalGoals, NutritionalGoalManager
+    from .nutritional_analysis import NutritionalAnalyzer, NutritionData
+    from pathlib import Path
+    import json
+
+    config = get_config()
+
+    try:
+        # Load goals
+        goals_file = Path("nutrition_goals.json")
+        if not goals_file.exists():
+            typer.echo("❌ No nutrition goals set. Use 'mealplanner set-nutrition-goals' first.", err=True)
+            raise typer.Exit(1)
+
+        with open(goals_file, 'r') as f:
+            goals_data = json.load(f)
+
+        from .nutritional_goals import GoalType
+        goals = NutritionalGoals(
+            goal_type=GoalType(goals_data['goal_type']),
+            daily_calories=goals_data['daily_calories'],
+            daily_protein=goals_data['daily_protein'],
+            daily_carbs=goals_data['daily_carbs'],
+            daily_fat=goals_data['daily_fat'],
+            daily_fiber=goals_data['daily_fiber'],
+            daily_sodium_max=goals_data['daily_sodium_max'],
+            protein_ratio=goals_data['protein_ratio'],
+            carbs_ratio=goals_data['carbs_ratio'],
+            fat_ratio=goals_data['fat_ratio']
+        )
+
+        # Parse target date
+        if target_date:
+            try:
+                parsed_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid date format. Use YYYY-MM-DD", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_date = date.today()
+
+        if period.lower() == "day":
+            # Daily progress
+            daily_analysis = NutritionalAnalyzer.analyze_daily_nutrition(parsed_date)
+            actual_nutrition = NutritionData(**daily_analysis['total_nutrition'])
+
+            progress = NutritionalGoalManager.calculate_progress(goals, actual_nutrition)
+
+            typer.echo(f"📈 Daily Nutrition Progress - {parsed_date}")
+            typer.echo(f"Goal: {goals.goal_type.value.replace('_', ' ').title()}")
+            typer.echo("=" * 50)
+
+            typer.echo(f"\n🎯 Overall Score: {progress['overall_score']:.1f}/100")
+
+            typer.echo(f"\n📊 Progress Details:")
+            for nutrient, data in progress['progress'].items():
+                if nutrient == 'sodium':
+                    status_emoji = "✅" if data['status'] == 'good' else "⚠️"
+                    typer.echo(f"  {status_emoji} {nutrient.title()}: {data['actual']:.0f}mg / {data['target_max']:.0f}mg max ({data['percentage']:.1f}%)")
+                else:
+                    status_emoji = "✅" if data['status'] == 'good' else ("📉" if data['status'] == 'low' else "📈")
+                    typer.echo(f"  {status_emoji} {nutrient.title()}: {data['actual']:.1f} / {data['target']:.1f} ({data['percentage']:.1f}%)")
+
+            # Recommendations
+            recommendations = NutritionalGoalManager.generate_recommendations(goals, actual_nutrition)
+            if recommendations:
+                typer.echo(f"\n💡 Recommendations:")
+                for rec in recommendations:
+                    typer.echo(f"  • {rec}")
+
+        elif period.lower() == "week":
+            # Weekly progress
+            weekly_progress = NutritionalGoalManager.analyze_weekly_progress(goals, parsed_date)
+
+            typer.echo(f"📅 Weekly Nutrition Progress")
+            typer.echo(f"Week of {weekly_progress['week_start']} to {weekly_progress['week_end']}")
+            typer.echo("=" * 50)
+
+            typer.echo(f"\n🎯 Weekly Average Score: {weekly_progress['weekly_progress']['overall_score']:.1f}/100")
+            typer.echo(f"📊 Consistency Score: {weekly_progress['consistency_score']:.1f}/100")
+            typer.echo(f"📅 Days with data: {weekly_progress['days_with_data']}/7")
+
+            # Weekly averages vs goals
+            typer.echo(f"\n📊 Weekly Average Progress:")
+            for nutrient, data in weekly_progress['weekly_progress']['progress'].items():
+                if nutrient == 'sodium':
+                    status_emoji = "✅" if data['status'] == 'good' else "⚠️"
+                    typer.echo(f"  {status_emoji} {nutrient.title()}: {data['actual']:.0f}mg avg / {data['target_max']:.0f}mg max")
+                else:
+                    status_emoji = "✅" if data['status'] == 'good' else ("📉" if data['status'] == 'low' else "📈")
+                    typer.echo(f"  {status_emoji} {nutrient.title()}: {data['actual']:.1f} avg / {data['target']:.1f} target")
+
+            # Daily scores
+            typer.echo(f"\n📈 Daily Scores:")
+            for daily in weekly_progress['daily_progresses']:
+                score_emoji = "🟢" if daily['overall_score'] >= 80 else ("🟡" if daily['overall_score'] >= 60 else "🔴")
+                typer.echo(f"  {score_emoji} {daily['date']}: {daily['overall_score']:.1f}/100")
+
+        else:
+            typer.echo(f"❌ Invalid period. Use 'day' or 'week'", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Generated nutrition progress for {parsed_date}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error tracking nutrition progress: {e}", err=True)
+        if config.debug:
+            logger.exception("Error tracking nutrition progress")
+        raise typer.Exit(1)
+
+
 def handle_unknown_command(command_name: str):
     """
     Handle unknown commands by suggesting valid subcommands.
