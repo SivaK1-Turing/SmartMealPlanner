@@ -1,12 +1,12 @@
 {
-  "goal_type": "weight_loss",
-  "daily_calories": 1800.0,
-  "daily_protein": 135.0,
-  "daily_carbs": 180.0,
-  "daily_fat": 60.0,
-  "daily_fiber": 30,
-  "daily_sodium_max": 2000,
-  "protein_ratio": 30,
+  "goal_type": "muscle_gain",
+  "daily_calories": 2500.0,
+  "daily_protein": 218.75,
+  "daily_carbs": 250.0,
+  "daily_fat": 69.44444444444444,
+  "daily_fiber": 25,
+  "daily_sodium_max": 2300,
+  "protein_ratio": 35.0,
   "carbs_ratio": 40,
-  "fat_ratio": 30
+  "fat_ratio": 25
 }
