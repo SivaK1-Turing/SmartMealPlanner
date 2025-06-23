@@ -2168,6 +2168,312 @@ def nutrition_progress(
         raise typer.Exit(1)
 
 
+@app.command()
+def generate_shopping_list(
+    start_date: str = typer.Argument(..., help="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = typer.Option(None, "--end-date", help="End date (YYYY-MM-DD), defaults to start date"),
+    output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
+    format_type: str = typer.Option("text", "--format", "-f", help="Output format (text, csv, json, markdown)"),
+    group_by_category: bool = typer.Option(True, "--group-by-category/--no-group", help="Group items by category"),
+    include_completed: bool = typer.Option(False, "--include-completed", help="Include completed meals"),
+    include_recipes: bool = typer.Option(True, "--include-recipes/--no-recipes", help="Include recipe information"),
+    printable: bool = typer.Option(False, "--printable", help="Generate printable format with checkboxes")
+):
+    """
+    Generate a shopping list from scheduled meal plans.
+
+    Create a comprehensive shopping list by aggregating ingredients from all
+    scheduled meals within the specified date range.
+    """
+    from datetime import datetime
+    from .shopping_list import ShoppingListGenerator
+    from .shopping_list_export import ShoppingListExporter
+
+    config = get_config()
+
+    try:
+        # Parse dates
+        try:
+            parsed_start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            typer.echo(f"❌ Invalid start date format. Use YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+
+        if end_date:
+            try:
+                parsed_end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid end date format. Use YYYY-MM-DD", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_end_date = parsed_start_date
+
+        if parsed_end_date < parsed_start_date:
+            typer.echo(f"❌ End date cannot be before start date", err=True)
+            raise typer.Exit(1)
+
+        # Generate shopping list
+        shopping_list = ShoppingListGenerator.generate_from_date_range(
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
+            group_by_category=group_by_category,
+            include_completed=include_completed
+        )
+
+        if not shopping_list.items:
+            typer.echo(f"📝 No ingredients found for the specified date range.")
+            typer.echo(f"Make sure you have scheduled meals between {parsed_start_date} and {parsed_end_date}")
+            return
+
+        # Generate output
+        if printable:
+            content = ShoppingListExporter.create_printable_list(
+                shopping_list=shopping_list,
+                checkboxes=True,
+                group_by_category=group_by_category
+            )
+        elif format_type.lower() == "text":
+            content = ShoppingListExporter.export_to_text(
+                shopping_list=shopping_list,
+                group_by_category=group_by_category,
+                include_recipes=include_recipes,
+                include_summary=True
+            )
+        elif format_type.lower() == "csv":
+            content = ShoppingListExporter.export_to_csv(shopping_list)
+        elif format_type.lower() == "json":
+            content = ShoppingListExporter.export_to_json(shopping_list, include_metadata=True)
+        elif format_type.lower() == "markdown":
+            content = ShoppingListExporter.export_to_markdown(
+                shopping_list=shopping_list,
+                group_by_category=group_by_category,
+                include_recipes=include_recipes
+            )
+        else:
+            typer.echo(f"❌ Unsupported format: {format_type}. Use text, csv, json, or markdown", err=True)
+            raise typer.Exit(1)
+
+        # Output to file or console
+        if output_file:
+            success = ShoppingListExporter.save_to_file(
+                shopping_list=shopping_list,
+                file_path=output_file,
+                format_type=format_type,
+                group_by_category=group_by_category,
+                include_recipes=include_recipes
+            )
+
+            if success:
+                typer.echo(f"✅ Shopping list saved to {output_file}")
+                typer.echo(f"📊 Summary: {len(shopping_list.items)} items from {shopping_list.total_meals} meals")
+            else:
+                typer.echo(f"❌ Failed to save shopping list to {output_file}", err=True)
+                raise typer.Exit(1)
+        else:
+            # Output to console
+            typer.echo(content)
+
+        if config.debug:
+            logger.info(f"Generated shopping list for {parsed_start_date} to {parsed_end_date}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error generating shopping list: {e}", err=True)
+        if config.debug:
+            logger.exception("Error generating shopping list")
+        raise typer.Exit(1)
+
+
+@app.command()
+def shopping_list_from_recipes(
+    recipe_ids: str = typer.Argument(..., help="Comma-separated recipe IDs"),
+    servings: Optional[str] = typer.Option(None, "--servings", help="Comma-separated servings per recipe (e.g., '2,1,3')"),
+    output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
+    format_type: str = typer.Option("text", "--format", "-f", help="Output format (text, csv, json, markdown)"),
+    group_by_category: bool = typer.Option(True, "--group-by-category/--no-group", help="Group items by category")
+):
+    """
+    Generate a shopping list from specific recipes.
+
+    Create a shopping list by aggregating ingredients from the specified recipes,
+    useful for meal prep or cooking multiple recipes at once.
+    """
+    from .shopping_list import ShoppingListGenerator
+    from .shopping_list_export import ShoppingListExporter
+
+    config = get_config()
+
+    try:
+        # Parse recipe IDs
+        try:
+            recipe_id_list = [int(rid.strip()) for rid in recipe_ids.split(',')]
+        except ValueError:
+            typer.echo(f"❌ Invalid recipe IDs. Use comma-separated integers (e.g., '1,2,3')", err=True)
+            raise typer.Exit(1)
+
+        # Parse servings if provided
+        servings_per_recipe = {}
+        if servings:
+            try:
+                servings_list = [int(s.strip()) for s in servings.split(',')]
+                if len(servings_list) != len(recipe_id_list):
+                    typer.echo(f"❌ Number of servings must match number of recipes", err=True)
+                    raise typer.Exit(1)
+                servings_per_recipe = dict(zip(recipe_id_list, servings_list))
+            except ValueError:
+                typer.echo(f"❌ Invalid servings. Use comma-separated integers (e.g., '2,1,3')", err=True)
+                raise typer.Exit(1)
+
+        # Generate shopping list
+        shopping_list = ShoppingListGenerator.generate_from_recipes(
+            recipe_ids=recipe_id_list,
+            servings_per_recipe=servings_per_recipe
+        )
+
+        if not shopping_list.items:
+            typer.echo(f"📝 No ingredients found for the specified recipes.")
+            typer.echo(f"Make sure the recipe IDs are valid and contain ingredients.")
+            return
+
+        # Generate output
+        if format_type.lower() == "text":
+            content = ShoppingListExporter.export_to_text(
+                shopping_list=shopping_list,
+                group_by_category=group_by_category,
+                include_recipes=True,
+                include_summary=True
+            )
+        elif format_type.lower() == "csv":
+            content = ShoppingListExporter.export_to_csv(shopping_list)
+        elif format_type.lower() == "json":
+            content = ShoppingListExporter.export_to_json(shopping_list, include_metadata=True)
+        elif format_type.lower() == "markdown":
+            content = ShoppingListExporter.export_to_markdown(
+                shopping_list=shopping_list,
+                group_by_category=group_by_category,
+                include_recipes=True
+            )
+        else:
+            typer.echo(f"❌ Unsupported format: {format_type}. Use text, csv, json, or markdown", err=True)
+            raise typer.Exit(1)
+
+        # Output to file or console
+        if output_file:
+            success = ShoppingListExporter.save_to_file(
+                shopping_list=shopping_list,
+                file_path=output_file,
+                format_type=format_type,
+                group_by_category=group_by_category,
+                include_recipes=True
+            )
+
+            if success:
+                typer.echo(f"✅ Shopping list saved to {output_file}")
+                typer.echo(f"📊 Summary: {len(shopping_list.items)} items from {len(recipe_id_list)} recipes")
+            else:
+                typer.echo(f"❌ Failed to save shopping list to {output_file}", err=True)
+                raise typer.Exit(1)
+        else:
+            # Output to console
+            typer.echo(content)
+
+        if config.debug:
+            logger.info(f"Generated shopping list from recipes: {recipe_id_list}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error generating shopping list from recipes: {e}", err=True)
+        if config.debug:
+            logger.exception("Error generating shopping list from recipes")
+        raise typer.Exit(1)
+
+
+@app.command()
+def shopping_list_nutrition(
+    start_date: str = typer.Argument(..., help="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = typer.Option(None, "--end-date", help="End date (YYYY-MM-DD), defaults to start date"),
+    include_completed: bool = typer.Option(False, "--include-completed", help="Include completed meals")
+):
+    """
+    Analyze the nutritional content of a shopping list.
+
+    Calculate the approximate nutritional value of all ingredients in a
+    shopping list generated from scheduled meals.
+    """
+    from datetime import datetime
+    from .shopping_list import ShoppingListGenerator
+
+    config = get_config()
+
+    try:
+        # Parse dates
+        try:
+            parsed_start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            typer.echo(f"❌ Invalid start date format. Use YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+
+        if end_date:
+            try:
+                parsed_end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                typer.echo(f"❌ Invalid end date format. Use YYYY-MM-DD", err=True)
+                raise typer.Exit(1)
+        else:
+            parsed_end_date = parsed_start_date
+
+        # Generate shopping list
+        shopping_list = ShoppingListGenerator.generate_from_date_range(
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
+            include_completed=include_completed
+        )
+
+        if not shopping_list.items:
+            typer.echo(f"📝 No ingredients found for the specified date range.")
+            return
+
+        # Calculate nutrition
+        nutrition = ShoppingListGenerator.calculate_shopping_list_nutrition(shopping_list)
+
+        # Display results
+        if shopping_list.start_date == shopping_list.end_date:
+            date_range = shopping_list.start_date.strftime("%Y-%m-%d")
+        else:
+            date_range = f"{shopping_list.start_date.strftime('%Y-%m-%d')} to {shopping_list.end_date.strftime('%Y-%m-%d')}"
+
+        typer.echo(f"🛒 Shopping List Nutrition Analysis")
+        typer.echo(f"📅 Date Range: {date_range}")
+        typer.echo("=" * 50)
+
+        typer.echo(f"\n📊 Total Nutritional Content:")
+        typer.echo(f"  Calories: {nutrition['calories']:.0f}")
+        typer.echo(f"  Protein: {nutrition['protein']:.1f}g")
+        typer.echo(f"  Carbohydrates: {nutrition['carbs']:.1f}g")
+        typer.echo(f"  Fat: {nutrition['fat']:.1f}g")
+        typer.echo(f"  Fiber: {nutrition['fiber']:.1f}g")
+        typer.echo(f"  Sodium: {nutrition['sodium']:.0f}mg")
+
+        typer.echo(f"\n📋 Shopping List Summary:")
+        typer.echo(f"  Total Items: {len(shopping_list.items)}")
+        typer.echo(f"  Total Meals: {shopping_list.total_meals}")
+        typer.echo(f"  Total Recipes: {shopping_list.total_recipes}")
+        typer.echo(f"  Categories: {len(shopping_list.categories)}")
+
+        if shopping_list.categories:
+            typer.echo(f"  Category List: {', '.join(shopping_list.categories)}")
+
+        typer.echo(f"\n💡 Note: Nutritional values are approximate and based on ingredient data.")
+        typer.echo(f"Actual values may vary based on preparation methods and specific brands.")
+
+        if config.debug:
+            logger.info(f"Analyzed shopping list nutrition for {parsed_start_date} to {parsed_end_date}")
+
+    except Exception as e:
+        typer.echo(f"❌ Error analyzing shopping list nutrition: {e}", err=True)
+        if config.debug:
+            logger.exception("Error analyzing shopping list nutrition")
+        raise typer.Exit(1)
+
+
 def handle_unknown_command(command_name: str):
     """
     Handle unknown commands by suggesting valid subcommands.
