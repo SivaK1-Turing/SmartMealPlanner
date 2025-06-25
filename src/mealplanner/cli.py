@@ -2508,6 +2508,355 @@ def handle_unknown_command(command_name: str):
     typer.echo("\nUse 'mealplanner --help' for more information.", err=True)
 
 
+@app.command()
+def test_email(
+    to_email: str = typer.Argument(..., help="Email address to send test email to")
+):
+    """
+    Test email configuration by sending a test email.
+
+    This command verifies that your SMTP settings are correctly configured
+    by sending a simple test email to the specified address.
+    """
+    from .email_notifications import EmailNotificationManager, EmailConfigurationError, EmailSendError
+
+    config = get_config()
+
+    try:
+        typer.echo("Testing email configuration...")
+
+        email_manager = EmailNotificationManager()
+
+        # Test SMTP connection
+        if not email_manager.test_connection():
+            typer.echo("❌ SMTP connection test failed", err=True)
+            typer.echo("Please check your email configuration in .env file:", err=True)
+            typer.echo("  SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD", err=True)
+            raise typer.Exit(1)
+
+        typer.echo("✅ SMTP connection successful")
+
+        # Send test email
+        html_content = """
+        <html>
+        <body>
+            <h2>🎉 Email Test Successful!</h2>
+            <p>Your Smart Meal Planner email configuration is working correctly.</p>
+            <p>You can now receive meal reminders, shopping lists, and nutrition summaries via email.</p>
+            <hr>
+            <p><em>Smart Meal Planner - Making meal planning effortless</em></p>
+        </body>
+        </html>
+        """
+
+        text_content = """
+        EMAIL TEST SUCCESSFUL!
+
+        Your Smart Meal Planner email configuration is working correctly.
+        You can now receive meal reminders, shopping lists, and nutrition summaries via email.
+
+        --
+        Smart Meal Planner - Making meal planning effortless
+        """
+
+        success = email_manager.send_email(
+            to_email=to_email,
+            subject="Smart Meal Planner - Email Test",
+            html_content=html_content,
+            text_content=text_content
+        )
+
+        if success:
+            typer.echo(f"✅ Test email sent successfully to {to_email}")
+            typer.echo("Check your inbox to confirm email delivery.")
+        else:
+            typer.echo(f"❌ Failed to send test email to {to_email}", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Email test completed successfully for {to_email}")
+
+    except EmailConfigurationError as e:
+        typer.echo(f"❌ Email configuration error: {e}", err=True)
+        typer.echo("Please check your .env file for required email settings:", err=True)
+        typer.echo("  SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD", err=True)
+        if config.debug:
+            logger.error(f"Email configuration error: {e}")
+        raise typer.Exit(1)
+    except EmailSendError as e:
+        typer.echo(f"❌ Failed to send email: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email send error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Error testing email: {e}", err=True)
+        if config.debug:
+            logger.exception("Error testing email")
+        raise typer.Exit(1)
+
+
+@app.command()
+def send_meal_reminder(
+    to_email: str = typer.Argument(..., help="Email address to send reminder to"),
+    date: str = typer.Argument(..., help="Date for meal reminder (YYYY-MM-DD)")
+):
+    """
+    Send a meal reminder email for a specific date.
+
+    This command sends an email containing all scheduled meals for the specified date,
+    helping you stay on track with your meal planning.
+    """
+    from datetime import datetime
+    from .email_notifications import EmailNotificationManager, EmailConfigurationError, EmailSendError
+
+    config = get_config()
+
+    try:
+        # Parse date
+        try:
+            parsed_date = datetime.strptime(date, '%Y-%m-%d').date()
+        except ValueError:
+            typer.echo("❌ Invalid date format. Use YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Sending meal reminder for {parsed_date} to {to_email}...")
+
+        email_manager = EmailNotificationManager()
+
+        success = email_manager.send_meal_reminder(
+            to_email=to_email,
+            target_date=parsed_date
+        )
+
+        if success:
+            typer.echo(f"✅ Meal reminder sent successfully to {to_email}")
+        else:
+            typer.echo(f"❌ Failed to send meal reminder to {to_email}", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Meal reminder sent successfully for {parsed_date} to {to_email}")
+
+    except EmailConfigurationError as e:
+        typer.echo(f"❌ Email configuration error: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email configuration error: {e}")
+        raise typer.Exit(1)
+    except EmailSendError as e:
+        typer.echo(f"❌ Failed to send email: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email send error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Error sending meal reminder: {e}", err=True)
+        if config.debug:
+            logger.exception("Error sending meal reminder")
+        raise typer.Exit(1)
+
+
+@app.command()
+def send_shopping_list_email(
+    to_email: str = typer.Argument(..., help="Email address to send shopping list to"),
+    start_date: str = typer.Argument(..., help="Start date for shopping list (YYYY-MM-DD)"),
+    end_date: Optional[str] = typer.Option(None, "--end-date", help="End date for shopping list (YYYY-MM-DD)"),
+    include_attachments: bool = typer.Option(True, "--attachments/--no-attachments", help="Include shopping list attachments")
+):
+    """
+    Send a shopping list email for a date range.
+
+    This command generates a shopping list from scheduled meals and sends it via email
+    with optional file attachments in multiple formats.
+    """
+    from datetime import datetime
+    from .email_notifications import EmailNotificationManager, EmailConfigurationError, EmailSendError
+
+    config = get_config()
+
+    try:
+        # Parse dates
+        try:
+            parsed_start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            parsed_end_date = datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else parsed_start_date
+        except ValueError:
+            typer.echo("❌ Invalid date format. Use YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+
+        if parsed_end_date < parsed_start_date:
+            typer.echo("❌ End date must be after start date", err=True)
+            raise typer.Exit(1)
+
+        date_range = f"{parsed_start_date}"
+        if parsed_end_date != parsed_start_date:
+            date_range += f" to {parsed_end_date}"
+
+        typer.echo(f"Sending shopping list for {date_range} to {to_email}...")
+
+        email_manager = EmailNotificationManager()
+
+        success = email_manager.send_shopping_list(
+            to_email=to_email,
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
+            include_attachment=include_attachments
+        )
+
+        if success:
+            typer.echo(f"✅ Shopping list sent successfully to {to_email}")
+            if include_attachments:
+                typer.echo("📎 Included attachments: shopping_list.txt, shopping_list.csv")
+        else:
+            typer.echo(f"❌ Failed to send shopping list to {to_email}", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Shopping list sent successfully for {date_range} to {to_email}")
+
+    except EmailConfigurationError as e:
+        typer.echo(f"❌ Email configuration error: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email configuration error: {e}")
+        raise typer.Exit(1)
+    except EmailSendError as e:
+        typer.echo(f"❌ Failed to send email: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email send error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Error sending shopping list: {e}", err=True)
+        if config.debug:
+            logger.exception("Error sending shopping list")
+        raise typer.Exit(1)
+
+
+@app.command()
+def send_nutrition_summary_email(
+    to_email: str = typer.Argument(..., help="Email address to send nutrition summary to"),
+    date: str = typer.Argument(..., help="Date for nutrition summary (YYYY-MM-DD)"),
+    period: str = typer.Option("day", "--period", help="Period type: day, week, month")
+):
+    """
+    Send a nutrition summary email for a specific date or period.
+
+    This command calculates and sends nutritional information for scheduled meals
+    over the specified period (day, week, or month).
+    """
+    from datetime import datetime
+    from .email_notifications import EmailNotificationManager, EmailConfigurationError, EmailSendError
+
+    config = get_config()
+
+    try:
+        # Validate period
+        if period not in ['day', 'week', 'month']:
+            typer.echo("❌ Invalid period. Use: day, week, or month", err=True)
+            raise typer.Exit(1)
+
+        # Parse date
+        try:
+            parsed_date = datetime.strptime(date, '%Y-%m-%d').date()
+        except ValueError:
+            typer.echo("❌ Invalid date format. Use YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Sending nutrition summary ({period}) for {parsed_date} to {to_email}...")
+
+        email_manager = EmailNotificationManager()
+
+        success = email_manager.send_nutrition_summary(
+            to_email=to_email,
+            target_date=parsed_date,
+            period=period
+        )
+
+        if success:
+            typer.echo(f"✅ Nutrition summary sent successfully to {to_email}")
+        else:
+            typer.echo(f"❌ Failed to send nutrition summary to {to_email}", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Nutrition summary ({period}) sent successfully for {parsed_date} to {to_email}")
+
+    except EmailConfigurationError as e:
+        typer.echo(f"❌ Email configuration error: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email configuration error: {e}")
+        raise typer.Exit(1)
+    except EmailSendError as e:
+        typer.echo(f"❌ Failed to send email: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email send error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Error sending nutrition summary: {e}", err=True)
+        if config.debug:
+            logger.exception("Error sending nutrition summary")
+        raise typer.Exit(1)
+
+
+@app.command()
+def send_weekly_meal_plan_email(
+    to_email: str = typer.Argument(..., help="Email address to send weekly meal plan to"),
+    start_date: str = typer.Argument(..., help="Start date of the week (YYYY-MM-DD, preferably Monday)"),
+    include_shopping_list: bool = typer.Option(True, "--shopping-list/--no-shopping-list", help="Include shopping list in email")
+):
+    """
+    Send a weekly meal plan summary email.
+
+    This command sends a comprehensive weekly meal plan email including all scheduled
+    meals for the week and optionally a shopping list for the ingredients needed.
+    """
+    from datetime import datetime
+    from .email_notifications import EmailNotificationManager, EmailConfigurationError, EmailSendError
+
+    config = get_config()
+
+    try:
+        # Parse date
+        try:
+            parsed_start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        except ValueError:
+            typer.echo("❌ Invalid date format. Use YYYY-MM-DD", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Sending weekly meal plan starting {parsed_start_date} to {to_email}...")
+
+        email_manager = EmailNotificationManager()
+
+        success = email_manager.send_weekly_meal_plan(
+            to_email=to_email,
+            start_date=parsed_start_date,
+            include_shopping_list=include_shopping_list
+        )
+
+        if success:
+            typer.echo(f"✅ Weekly meal plan sent successfully to {to_email}")
+            if include_shopping_list:
+                typer.echo("📎 Included shopping list attachment")
+        else:
+            typer.echo(f"❌ Failed to send weekly meal plan to {to_email}", err=True)
+            raise typer.Exit(1)
+
+        if config.debug:
+            logger.info(f"Weekly meal plan sent successfully for week of {parsed_start_date} to {to_email}")
+
+    except EmailConfigurationError as e:
+        typer.echo(f"❌ Email configuration error: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email configuration error: {e}")
+        raise typer.Exit(1)
+    except EmailSendError as e:
+        typer.echo(f"❌ Failed to send email: {e}", err=True)
+        if config.debug:
+            logger.error(f"Email send error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"❌ Error sending weekly meal plan: {e}", err=True)
+        if config.debug:
+            logger.exception("Error sending weekly meal plan")
+        raise typer.Exit(1)
+
+
 def cli_main():
     """
     Main entry point for the CLI application.
