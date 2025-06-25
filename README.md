@@ -1,4 +1,4 @@
-![code_execution1](https://github.com/user-attachments/assets/157a7bf7-0125-4085-b13b-e12525a00e02)# Smart Meal Planner
+# Smart Meal Planner
 
 A command-line Python application that helps users import, organize, and schedule recipes into weekly meal plans. It offers ingredient-based search, nutritional analysis, shopping list export, and automated email reminders.
 
@@ -213,6 +213,8 @@ pytest tests/test_cli.py::TestCLIBasics::test_help_output -v
 ```
 
 1.Code Execution
+
+![code_execution1](https://github.com/user-attachments/assets/157a7bf7-0125-4085-b13b-e12525a00e02)
 
 ![code_execution1](https://github.com/user-attachments/assets/45d6d5d5-fe5f-4363-94ec-0e43524f89f2)
 
